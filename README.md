@@ -1,31 +1,31 @@
-# MW2 CONTROL — preview 0.4.3
+# MW2 Control for Call of Duty: Modern Warfare 2 (2009)
 
-Native Windows x64 companion for MW2 (2009). An independent implementation, not a repack of Lindra or another unlocker.
+Windows x64 desktop tool for **MW2 (2009) Multiplayer on Steam**. Set your FPS cap and FOV, mute streamed audio, switch the scoreboard to numeric ping, and inspect lobby traffic.
 
-## Download and run
+**[Download for Windows x64](https://github.com/angelosmiliotis/mw2-control/releases/latest)** · [Ελληνικές οδηγίες](docs/START-HERE-GR.txt)
 
-1. Download `MW2-Control-v0.4.3-win-x64.zip` from [GitHub Releases](https://github.com/angelosmiliotis/mw2-control/releases/tag/v0.4.3).
-2. Extract the ZIP and open `MW2Control.exe` inside the extracted folder. Keep the files together. The Windows x64 ZIP includes the .NET 8 Desktop Runtime.
-3. Start MW2 (2009) Multiplayer through Steam. Choose your settings in MW2 Control and select **Apply**. Game settings require a supported executable build.
+## Quick start
 
-Install [Npcap](https://npcap.com/#download) to use **Scan lobby**. Run MW2 Control as administrator when you need to add or remove firewall blocks.
+1. Download the Windows x64 ZIP from Releases and extract the entire folder.
+2. Start **MW2 (2009) Multiplayer** through Steam and open `MW2Control.exe`. The release ZIP includes the .NET 8 Desktop Runtime.
+3. Choose your settings and select **Apply**. Select **Reset** to stop retention and restore values the app still owns.
 
-## What this preview is for
+Game settings require a supported build of `iw4mp.exe`. Use them where modifications are permitted.
 
-- A real WPF interface with manual, read-only process inspection.
-- FOV/FPS requested vs observed values and explicit per-build validation. Startup requests default to 90° and 333 FPS.
-- One Settings tab with Apply and Reset for the validated game session.
-- Streamed-audio mute, fullbright, fog/glow toggles, specular modes and compound detail-overlay suppression, validated independently for the exact supported build.
-- Explicit uncapped FPS (0) and Numeric ping for scoreboard latency.
-- Apply starts retention for owned targets that match the last write or the exact captured baseline in the same process and mapping. Unexpected values stop it. Reset stops retention and restores captured originals where ownership checks pass.
-- Lobby Network groups Scan lobby and Block likely host, with adapter selection and reversible owned blocks available separately.
-- Confirmed exact-public-IP UDP firewall blocks scoped to iw4mp.exe, with owned-rule listing/removal. No automatic elevation.
+## Features
 
-Apply authorizes writes and retention for the current game lifetime. Apply again for a replacement process. Diagnostics shows the last observed values and operation history. Firewall operations may require administrator permission.
+| Feature | What it does |
+| --- | --- |
+| FPS unlocker and FOV changer | Set an FPS cap or choose Uncapped. Startup requests default to 333 FPS and 90° FOV. |
+| Stream Mute | Mutes streamed audio. In a live multiplayer test, footsteps, gunfire, explosions and the bomb timer remained audible. |
+| Visual settings | Fullbright, fog, glow, specular mode and experimental detail-overlay controls. |
+| Numeric ping | Displays the game's ping in milliseconds on the scoreboard. |
+| Lobby Network | Shows the busiest observed IPv4 UDP peer and offers reversible firewall blocks for the selected endpoint. |
+| Diagnostics | Shows the detected build, observed settings and recent actions. |
 
-Stream mute is partial: selective off-map gunfire/S&D cue filtering remains unresolved. Detail overlays do not guarantee complete No Camos. Values may reset at map/respawn transitions; maintenance does not follow a changed mapping or bypass engine clamps, and cannot guarantee effects between ticks. It can overwrite an exact baseline written by the game or another writer while explicitly active. Traffic volume cannot prove host identity; relays, Steam-owned transport, IPv6 and changed IPs can hide peers or defeat an executable-scoped block. Blocking an IP does not blacklist a lobby ID.
+Install [Npcap](https://npcap.com/#download) for **Scan lobby**. Launch the app as administrator for **Block** or **Unblock**. The traffic leader is a possible host. Steam relays can make that estimate unreliable.
 
-Use the controls where game modifications are permitted. Close other tuners before live testing to avoid competing writes.
+Apply retains eligible settings during the current game process. Apply again after restarting the game. Some settings may reset during map transitions, and FOV above 80° remains experimental.
 
 ## Build
 
