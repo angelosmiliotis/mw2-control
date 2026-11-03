@@ -4,18 +4,18 @@ Windows x64 desktop tool for **MW2 (2009) Multiplayer on Steam**. Set your FPS c
 
 **[Download for Windows x64](https://github.com/angelosmiliotis/mw2-control/releases/latest)** · [Ελληνικές οδηγίες](docs/START-HERE-GR.txt)
 
-![MW2 Control Settings with FOV, FPS, visual, audio and scoreboard controls](docs/screenshots/settings.jpg)
+![MW2 Control Settings with FOV, FPS, visual, audio and scoreboard controls](docs/screenshots/settings.png)
 
 <details>
 <summary>See Diagnostics and Lobby Network</summary>
 
 ### Diagnostics
 
-![MW2 Control Diagnostics showing the session scan and activity panels](docs/screenshots/diagnostics.jpg)
+![MW2 Control Diagnostics showing the session scan and activity panels](docs/screenshots/diagnostics.png)
 
 ### Lobby Network
 
-![MW2 Control Lobby Network showing scan, likely host blocking and adapter controls](docs/screenshots/lobby.jpg)
+![MW2 Control Lobby Network showing scan, likely host blocking and adapter controls](docs/screenshots/lobby.png)
 
 </details>
 
