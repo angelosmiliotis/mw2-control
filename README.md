@@ -2,7 +2,7 @@
 
 Windows x64 desktop tool for **MW2 (2009) Multiplayer on Steam**. Set your FPS cap and FOV, mute streamed audio, switch the scoreboard to numeric ping, and inspect lobby traffic.
 
-**[Download for Windows x64](https://github.com/angelosmiliotis/mw2-control/releases/latest)** · [Ελληνικές οδηγίες](docs/START-HERE-GR.txt)
+**[Download for Windows x64](https://github.com/angelosmiliotis/mw2-control/releases/latest)** · [Quick guide](docs/START-HERE.txt)
 
 ![MW2 Control Settings with FOV, FPS, visual, audio and scoreboard controls](docs/screenshots/settings.png)
 

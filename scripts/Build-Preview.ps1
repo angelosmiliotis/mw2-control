@@ -14,5 +14,6 @@ if (-not (Test-Path -LiteralPath $appProject)) {
 
 & dotnet publish $appProject -c Release -r win-x64 --self-contained false -o $outputDirectory
 if ($LASTEXITCODE -ne 0) { throw 'Preview publish failed.' }
-Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\START-HERE-GR.txt') -Destination (Join-Path $outputDirectory 'START-HERE-GR.txt')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\START-HERE.txt') -Destination (Join-Path $outputDirectory 'START-HERE.txt')
+Remove-Item -LiteralPath (Join-Path $outputDirectory 'START-HERE-GR.txt') -ErrorAction SilentlyContinue
 Write-Output ('Preview: ' + (Join-Path $outputDirectory 'MW2Control.exe'))

@@ -1,0 +1,15 @@
+MW2 Control — Windows x64
+
+Extract the entire ZIP and keep its files together. Start MW2 (2009)
+Multiplayer through Steam, then open MW2Control.exe. The release ZIP
+includes the .NET 8 Desktop Runtime. Preview builds require the Windows
+Desktop .NET 8 Runtime (x64).
+
+Choose your settings and select Apply. Apply again after restarting the
+game. Reset stops retention and restores settings the app still owns.
+Diagnostics shows the detected build, observed settings and recent
+actions. Use settings modifications where permitted.
+
+For Scan lobby, install Npcap from https://npcap.com/#download.
+Run MW2 Control as administrator to add or remove firewall blocks.
+The busiest peer is a possible host. Steam relays can affect the estimate.
