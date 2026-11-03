@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>MW2Control</AssemblyName>
+    <ApplicationIcon>Assets/MW2Control.ico</ApplicationIcon>
+    <Version>0.4.3</Version>
+    <RootNamespace>MW2Control.App</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets/MW2Control.ico" />
+    <ProjectReference Include="../MW2Control.Core/MW2Control.Core.csproj" />
+    <ProjectReference Include="../MW2Control.Network/MW2Control.Network.csproj" />
+  </ItemGroup>
+</Project>

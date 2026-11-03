@@ -1,0 +1,321 @@
+namespace MW2Control.Core;
+
+/// <summary>Serialized facade. Inspect and Dispose never write; disposal does not implicitly restore.</summary>
+public sealed class ControlEngine : IDisposable
+{
+    private readonly IProcessSource source;
+    private readonly object gate = new();
+    private IProcessMemory? memory;
+    private TuningTransaction? transaction;
+    private AdvancedTransaction? advancedTransaction;
+    private ProcessIdentity? lastWriteSession;
+    private ProcessIdentity? lastAdvancedWriteSession;
+    private bool maintenanceFaulted;
+    private bool disposed;
+
+    public ControlEngine() : this(new WindowsProcessSource()) { }
+    public ControlEngine(IProcessSource source) => this.source = source ?? throw new ArgumentNullException(nameof(source));
+
+    public EngineSnapshot Inspect()
+    {
+        lock (gate)
+        {
+            if (disposed) return Empty(EngineState.Error, "The engine is disposed.");
+            try
+            {
+                var unavailable = Acquire();
+                return unavailable ?? Snapshot();
+            }
+            catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex)) { return Failure(ex); }
+        }
+    }
+
+    public OperationResult Apply(TuningRequest request, bool privateSessionConfirmed)
+    {
+        lock (gate)
+        {
+            if (!privateSessionConfirmed) return new(false, "Confirm a private/offline session before applying. No writes performed.", Inspect());
+            var validation = TuningValidation.ValidateRequest(request);
+            if (!validation.Success) return new(false, validation.Message, Inspect());
+            return Operate(() => transaction!.Apply(request, privateSessionConfirmed));
+        }
+    }
+
+    public OperationResult Restore(bool privateSessionConfirmed)
+    {
+        lock (gate)
+        {
+            if (!privateSessionConfirmed) return new(false, "Confirm a private/offline session before restoring. No writes performed.", Inspect());
+            return Operate(() => transaction!.Restore(privateSessionConfirmed), restoring: true);
+        }
+    }
+
+    public OperationResult ApplyAdvanced(AdvancedSettings settings, bool privateSessionConfirmed)
+    {
+        lock (gate)
+        {
+            if (!privateSessionConfirmed) return new(false, "Confirm a private/offline session before advanced changes. No writes performed.", Inspect());
+            var validation = AdvancedValidation.ValidateSettings(settings);
+            if (!validation.Success) return new(false, validation.Message, Inspect());
+            return Operate(() => advancedTransaction!.Apply(settings, privateSessionConfirmed), advanced: true);
+        }
+    }
+
+    public OperationResult RestoreAdvanced(bool privateSessionConfirmed)
+    {
+        lock (gate)
+        {
+            if (!privateSessionConfirmed) return new(false, "Confirm a private/offline session before restoring advanced changes. No writes performed.", Inspect());
+            return Operate(() => advancedTransaction!.Restore(privateSessionConfirmed), restoring: true, advanced: true);
+        }
+    }
+
+    /// <summary>Applies tuning, then advanced settings, using one acquired process session.</summary>
+    public OperationResult ApplySettings(TuningRequest tuning, AdvancedSettings advanced)
+    {
+        lock (gate)
+        {
+            var validation = TuningValidation.ValidateRequest(tuning);
+            if (validation.Success) validation = AdvancedValidation.ValidateSettings(advanced);
+            if (!validation.Success) return new(false, validation.Message, Inspect());
+
+            return WithSession(() =>
+            {
+                var tuningResult = OperateHeld(() => transaction!.Apply(tuning, true), restoring: false, advanced: false);
+                if (!tuningResult.Success)
+                    return new(false, "Tuning failed. " + tuningResult.Message);
+
+                var advancedResult = OperateHeld(() => advancedTransaction!.Apply(advanced, true), restoring: false, advanced: true);
+                if (!advancedResult.Success) maintenanceFaulted = true;
+                var summary = advancedResult.Success ? "Applied." : "Partially applied.";
+                return new(advancedResult.Success, $"{summary} Tuning: {tuningResult.Message} Audio, visuals and HUD: {advancedResult.Message}");
+            });
+        }
+    }
+
+    /// <summary>Restores both owned groups using one acquired process session.</summary>
+    public OperationResult ResetSettings()
+    {
+        lock (gate)
+        {
+            return WithSession(() =>
+            {
+                var tuning = OperateHeld(() => transaction!.Restore(true), restoring: true, advanced: false);
+                var advanced = OperateHeld(() => advancedTransaction!.Restore(true), restoring: true, advanced: true);
+                var summary = tuning.Success && advanced.Success ? "Reset complete."
+                    : tuning.Success || advanced.Success ? "Reset partially completed." : "Reset failed.";
+                return new(tuning.Success && advanced.Success,
+                    $"{summary} Tuning ({(tuning.Success ? "OK" : "failed")}): {tuning.Message} " +
+                    $"Audio, visuals and HUD ({(advanced.Success ? "OK" : "failed")}): {advanced.Message}");
+            });
+        }
+    }
+
+    /// <summary>
+    /// One opt-in maintenance tick over the held session. Does not discover/reopen
+    /// a target, hash the executable, schedule work, or seed new originals/targets.
+    /// The caller must stop scheduling on failure, revoked confirmation or manual actions.
+    /// </summary>
+    public OperationResult MaintainOwned(bool privateSessionConfirmed)
+    {
+        lock (gate)
+        {
+            if (disposed) return new(false, "Keep applied stopped: the engine is disposed.", Empty(EngineState.Error, "The engine is disposed."));
+            if (!privateSessionConfirmed)
+            {
+                maintenanceFaulted = true;
+                return MaintenanceResult(false, "Keep applied stopped: private/offline confirmation is required. No writes performed.");
+            }
+            if (maintenanceFaulted) return MaintenanceResult(false, "Keep applied remains stopped after a guard/error. Manually Apply again before enabling it.");
+            if (memory is null || transaction is null || advancedTransaction is null)
+                return MaintenanceResult(false, "Keep applied needs an existing inspected session and a successful manual Apply first. No target was opened.");
+            var tuningOwned = transaction.HasOwnedValues;
+            var advancedOwned = advancedTransaction.HasOwnedValues;
+            if (!tuningOwned && !advancedOwned)
+                return MaintenanceResult(false, "Keep applied has no owned targets. Apply manually first; no writes performed.");
+            try
+            {
+                DvarValidator.Require(memory.ValidateIdentity(), "Process lifetime or main module changed.");
+                DvarValidator.Require(!tuningOwned || lastWriteSession == memory.Identity && transaction.CanMaintainOwned,
+                    "Tuning targets are not from a successful manual Apply in this session.");
+                DvarValidator.Require(!advancedOwned || lastAdvancedWriteSession == memory.Identity && advancedTransaction.CanMaintainOwned,
+                    "Advanced targets are not from a successful manual Apply in this session.");
+                if (tuningOwned)
+                {
+                    var result = transaction.ReapplyOwned();
+                    if (!result.Success)
+                    {
+                        maintenanceFaulted = true;
+                        return MaintenanceResult(false, result.Message + " Advanced targets were not written. Keep applied groups are not a cross-group atomic transaction.");
+                    }
+                }
+                if (advancedOwned)
+                {
+                    var result = advancedTransaction.ReapplyOwned();
+                    if (!result.Success)
+                    {
+                        maintenanceFaulted = true;
+                        return MaintenanceResult(false, result.Message +
+                            (tuningOwned ? " Tuning may already have been reapplied; groups are not a cross-group atomic transaction." : ""));
+                    }
+                }
+                return MaintenanceResult(true, "Owned targets checked/reapplied in the held session. No baseline was recaptured. Keep applied does not guarantee rendered/audio effects or persistence between ticks.");
+            }
+            catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex))
+            {
+                maintenanceFaulted = true;
+                return MaintenanceResult(false, "Keep applied stopped: " + ex.Message);
+            }
+        }
+    }
+
+    private OperationResult MaintenanceResult(bool success, string message)
+    {
+        EngineSnapshot snapshot;
+        try { snapshot = memory is null ? Empty(EngineState.Error, message) : Snapshot(); }
+        catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex))
+        {
+            maintenanceFaulted = true;
+            return new(false, message + " Keep applied stopped during read-only verification: " + ex.Message, Failure(ex));
+        }
+        return new(success, message, snapshot);
+    }
+
+    /// <summary>Explicit read-only reset: forget every restore ledger, release handles, and reinspect.</summary>
+    public EngineSnapshot ResetSession()
+    {
+        lock (gate)
+        {
+            if (disposed) return Empty(EngineState.Error, "The engine is disposed.");
+            lastWriteSession = null;
+            lastAdvancedWriteSession = null;
+            try
+            {
+                Release();
+                var snapshot = Inspect();
+                return snapshot with { Detail = "Restore history forgotten without game writes. " + snapshot.Detail };
+            }
+            catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex)) { return Failure(ex); }
+        }
+    }
+
+    private OperationResult Operate(Func<TransactionResult> operation, bool restoring = false, bool advanced = false) =>
+        WithSession(() => OperateHeld(operation, restoring, advanced));
+
+    private TransactionResult OperateHeld(Func<TransactionResult> operation, bool restoring, bool advanced)
+    {
+        var previousSession = advanced ? lastAdvancedWriteSession : lastWriteSession;
+        if (restoring && previousSession is not null && previousSession != memory!.Identity)
+            return new(false, "Restore refused: the values belong to a previous process lifetime or module. No writes performed.");
+        var result = operation();
+        if (result.Success && !restoring) maintenanceFaulted = false;
+        if (advanced) lastAdvancedWriteSession = advancedTransaction!.HasOwnedValues ? memory!.Identity : null;
+        else lastWriteSession = transaction!.HasOwnedValues ? memory!.Identity : null;
+        return result;
+    }
+
+    private OperationResult WithSession(Func<TransactionResult> operation)
+    {
+        if (disposed) return new(false, "The engine is disposed.", Empty(EngineState.Error, "The engine is disposed."));
+        try
+        {
+            var unavailable = Acquire();
+            if (unavailable is not null) return new(false, unavailable.Detail, unavailable);
+            var result = operation();
+            EngineSnapshot snapshot;
+            try { snapshot = Snapshot(); }
+            catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex)) { snapshot = Failure(ex); }
+            return new(result.Success, result.Message, snapshot)
+            {
+                CanMaintainOwned = result.Success && snapshot.State == EngineState.ReadOnlyReady && !maintenanceFaulted &&
+                    HasMaintainableTargets()
+            };
+        }
+        catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex))
+        {
+            var snapshot = Failure(ex);
+            return new(false, snapshot.Detail, snapshot);
+        }
+    }
+
+    private bool HasMaintainableTargets()
+    {
+        var tuningOwned = transaction!.HasOwnedValues;
+        var advancedOwned = advancedTransaction!.HasOwnedValues;
+        return (tuningOwned || advancedOwned) &&
+            (!tuningOwned || lastWriteSession == memory!.Identity && transaction.CanMaintainOwned) &&
+            (!advancedOwned || lastAdvancedWriteSession == memory!.Identity && advancedTransaction.CanMaintainOwned);
+    }
+
+    private EngineSnapshot? Acquire()
+    {
+        var candidate = source.OpenTarget();
+        if (candidate is null)
+        {
+            Release();
+            return Empty(EngineState.GameNotRunning, "iw4mp.exe is not running. Read-only inspection only; no game is launched.");
+        }
+        if (memory is not null && candidate.Identity == memory.Identity)
+        {
+            if (!ReferenceEquals(candidate, memory)) candidate.Dispose();
+        }
+        else
+        {
+            try { Release(); }
+            catch { candidate.Dispose(); throw; }
+            memory = candidate;
+            transaction = new TuningTransaction(candidate);
+            advancedTransaction = new AdvancedTransaction(candidate);
+        }
+        var profile = TuningValidation.ValidateProfile(memory!.Identity);
+        if (!profile.Success) return ForIdentity(EngineState.UnsupportedBuild, profile.Message, UnsupportedFeatures(profile.Message));
+        if (!memory.ValidateIdentity()) return ForIdentity(EngineState.Error, "Process lifetime or main module changed. Refresh to inspect the current session.", UnsupportedFeatures("Stale session."));
+        return null;
+    }
+
+    private EngineSnapshot Snapshot() => ForIdentity(EngineState.ReadOnlyReady,
+        "Known build inspected. Read-only by default; all writes require an explicit private/offline action. Optional features are validated independently. Anti-cheat safety is not guaranteed.",
+        transaction!.InspectFeatures().Concat(advancedTransaction!.InspectFeatures()).ToArray());
+
+    private EngineSnapshot ForIdentity(EngineState state, string detail, IReadOnlyList<FeatureReading> features)
+    {
+        var identity = memory!.Identity;
+        return new(state, "iw4mp.exe", identity.ProcessId, identity.ExecutablePath, identity.Sha256, detail, features);
+    }
+
+    private EngineSnapshot Failure(Exception exception)
+    {
+        var state = exception is TargetProcessException target ? target.State : EngineState.Error;
+        return memory is null ? Empty(state, exception.Message) : ForIdentity(state, exception.Message, UnsupportedFeatures(exception.Message));
+    }
+
+    private static IReadOnlyList<FeatureReading> UnsupportedFeatures(string detail) =>
+    [
+        new("fov", "Field of view", false, null, detail), new("fps", "Maximum FPS", false, null, detail),
+        new("music", "Mute streamed sounds", false, null, detail), new("fullbright", "Fullbright", false, null, detail),
+        new("fog", "No fog", false, null, detail), new("glow", "No glow", false, null, detail),
+        new("specular", "Specular map mode", false, null, detail), new("detail", "Hide detail overlays (experimental)", false, null, detail),
+        new("ping", "Numeric scoreboard ping", false, null, detail)
+    ];
+    private static EngineSnapshot Empty(EngineState state, string detail) => new(state, "iw4mp.exe", null, "", "", detail, UnsupportedFeatures(detail));
+
+    private void Release()
+    {
+        var previous = memory;
+        memory = null;
+        transaction = null;
+        advancedTransaction = null;
+        maintenanceFaulted = false;
+        previous?.Dispose();
+    }
+
+    public void Dispose()
+    {
+        lock (gate)
+        {
+            if (disposed) return;
+            disposed = true;
+            Release();
+        }
+    }
+}

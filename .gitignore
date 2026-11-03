@@ -1,0 +1,8 @@
+**/bin/
+**/obj/
+out/
+*.user
+docs/ADMIN-STATUS.md
+docs/BUILD-BRIEF.md
+docs/STAGE2-BRIEF.md
+docs/LIVE-REPAIR-*.md
