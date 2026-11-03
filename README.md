@@ -2,6 +2,14 @@
 
 Native Windows x64 companion for MW2 (2009). An independent implementation, not a repack of Lindra or another unlocker.
 
+## Download and run
+
+1. Download `MW2-Control-v0.4.3-win-x64.zip` from [GitHub Releases](https://github.com/angelosmiliotis/mw2-control/releases/tag/v0.4.3).
+2. Extract the ZIP and open `MW2Control.exe` inside the extracted folder. Keep the files together. The Windows x64 ZIP includes the .NET 8 Desktop Runtime.
+3. Start MW2 (2009) Multiplayer through Steam. Choose your settings in MW2 Control and select **Apply**. Game settings require a supported executable build.
+
+Install [Npcap](https://npcap.com/#download) to use **Scan lobby**. Run MW2 Control as administrator when you need to add or remove firewall blocks.
+
 ## What this preview is for
 
 - A real WPF interface with manual, read-only process inspection.
@@ -42,6 +50,4 @@ See `docs/FINAL-TEST-GUIDE.md` for the staged live test and `docs/AUDIO-FINDINGS
 - `src/MW2Control.App` — WPF interface and presentation state.
 - `src/MW2Control.Network` — passive metadata observation and scoped owned firewall blocks.
 - `tests/MW2Control.Tests` — synthetic tests, no real game access.
-- `docs/BUILD-BRIEF.md` — design/safety contract and model allocation.
-- `docs/ADMIN-STATUS.md` — coordinating checklist.
 - `docs/TEST-REPORT.md` — actual test results and limitations, when generated.
