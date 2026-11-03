@@ -1,0 +1,30 @@
+name: Bug report
+description: Report a crash, incorrect behavior, or compatibility problem.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: MW2 Control version
+      placeholder: v0.4.3
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Describe what you saw and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the settings you used and whether you were in the menu, a lobby, or a match.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics and screenshots
+      description: Include relevant messages, the game build if shown, and your Windows version. Issues are public. Remove IP addresses and personal information before posting.

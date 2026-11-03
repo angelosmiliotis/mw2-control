@@ -42,6 +42,10 @@ Install [Npcap](https://npcap.com/#download) for **Scan lobby**. Launch the app 
 
 Apply retains eligible settings during the current game process. Apply again after restarting the game. Some settings may reset during map transitions, and FOV above 80° remains experimental.
 
+## Feedback
+
+[Report a bug or share a suggestion](https://github.com/angelosmiliotis/mw2-control/issues/new/choose) through GitHub Issues.
+
 ## Build
 
 Requires .NET 8 SDK and Windows for the WPF application.

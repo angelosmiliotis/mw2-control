@@ -1,0 +1,11 @@
+name: Feedback or suggestion
+description: Share feedback or request an improvement to MW2 Control.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: feedback
+    attributes:
+      label: What would you like to improve?
+      description: Describe your experience or the change you would like and how it would help.
+    validations:
+      required: true
