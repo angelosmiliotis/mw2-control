@@ -1,6 +1,6 @@
 # MW2 CONTROL — preview 0.4.3
 
-Native Windows x64 companion for MW2 (2009). An independent implementation, not a repack of Lindra or another unlocker.
+Native Windows x64 companion for MW2 (2009).
 
 ## Download and run
 
