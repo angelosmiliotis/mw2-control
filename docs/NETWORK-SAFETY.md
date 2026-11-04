@@ -6,7 +6,7 @@ An IP address alone cannot reliably identify a Steam player. Shared relays and S
 
 ## Blocking an address
 
-A block adds inbound and outbound UDP firewall rules for that exact IP and the game's executable. Administrator access is required. Blocking may disconnect the current lobby or affect other lobbies sharing the same IP.
+A block adds inbound and outbound UDP firewall rules for that exact IP and the game's executable. The app requests administrator access for this operation when needed. A separate helper receives one validated block or unblock request over a local pipe and exits when finished. Blocking may disconnect the current lobby or affect other lobbies sharing the same IP.
 
 Unblock removes rules created by MW2 Control after checking their scope. The app preserves unrelated rules. Addresses remain blocked until you remove their rules. A host that changes IP may become reachable again.
 

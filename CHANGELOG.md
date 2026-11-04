@@ -1,5 +1,17 @@
 # Version history
 
+## 1.1 - Test release
+
+- Adds single-file download builds, with a small option for PCs that already have the .NET 8 Desktop Runtime.
+- Checks every requested setting before Apply starts writing.
+- Restores the previous settings after an interrupted Apply when the values can still be verified.
+- Keeps the previous successful settings active when a new request fails preflight.
+- Lets you prepare settings before opening the game.
+- Opens the existing app window when launched a second time.
+- Requests administrator access for Block or Unblock when needed.
+- Remembers the network adapter used for a successful scan.
+- Gives clearer explanations for missing Npcap and lobby connections.
+
 ## 1.0 - November 4, 2026
 
 - Remembers your settings between launches.

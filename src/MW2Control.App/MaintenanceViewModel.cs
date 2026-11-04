@@ -15,7 +15,7 @@ public sealed partial class MainViewModel
         _maintenanceCancellation?.Dispose();
         _maintenanceCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         _maintenanceActive = true;
-        MaintenanceStatus = "Settings are active.";
+        MaintenanceStatus = _operationNotice ?? "Settings are active.";
         _maintenanceTask = MaintainAsync(session, _maintenanceCancellation.Token);
         Refresh();
     }
@@ -74,7 +74,7 @@ public sealed partial class MainViewModel
                     LastResult = "Settings recovered automatically.";
                 }
                 recovering = !result.Success;
-                MaintenanceStatus = recovering ? "Restoring settings after a game change…" : "Settings are active.";
+                MaintenanceStatus = _operationNotice ?? (recovering ? "Restoring settings after a game change…" : "Settings are active.");
                 if (displayClock.ElapsedMilliseconds >= 1000)
                 {
                     _snapshot = snapshot;

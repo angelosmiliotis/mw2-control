@@ -33,13 +33,13 @@ public sealed partial class MainViewModel
     {
         try
         {
-            _preferences?.Save(new UserPreferences
+            _preferences?.Update(current => new UserPreferences
             {
                 Fov = RequestedFov, Fps = RequestedFps, UncappedFps = UncappedFps,
                 MuteStreams = Music.Requested, Fullbright = Fullbright.Requested,
                 NoFog = Fog.Requested, NoGlow = Glow.Requested,
                 NoDetailOverlays = Detail.Requested, NumericPing = Ping.Requested,
-                SpecularChoice = SpecularChoice
+                SpecularChoice = SpecularChoice, NetworkAdapterId = current.NetworkAdapterId
             });
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

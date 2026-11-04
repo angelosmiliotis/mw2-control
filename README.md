@@ -2,19 +2,21 @@
 
 A small Windows app for Call of Duty: Modern Warfare 2 (2009) on Steam. Change your FOV and FPS cap, quiet the background audio, and keep your settings in one place.
 
-**[Download for Windows](https://github.com/angelosmiliotis/mw2-control/releases/latest)** · [Report a bug](https://github.com/angelosmiliotis/mw2-control/issues/new?template=bug-report.yml) · [Suggest something](https://github.com/angelosmiliotis/mw2-control/issues/new?template=feedback.yml)
+**[Download 1.1 Standalone](https://github.com/angelosmiliotis/mw2-control/releases/download/v1.1/MW2-Control-1.1-Standalone-x64.exe)** · [Small download](https://github.com/angelosmiliotis/mw2-control/releases/download/v1.1/MW2-Control-1.1-Small-x64.exe) · [Report a bug](https://github.com/angelosmiliotis/mw2-control/issues/new?template=bug-report.yml) · [Suggest something](https://github.com/angelosmiliotis/mw2-control/issues/new?template=feedback.yml)
+
+1.1 is available for testing. The single-file downloads, administrator prompt and in-game transitions still need manual testing. [All releases](https://github.com/angelosmiliotis/mw2-control/releases).
 
 ![Settings in MW2 Control](docs/screenshots/settings.png)
 
 ## Getting started
 
-1. Download the Windows x64 ZIP from Releases and extract it.
-2. Start MW2 Multiplayer through Steam, then open `MW2Control.exe`.
+1. Download the Standalone EXE for Windows x64.
+2. Start MW2 Multiplayer through Steam, then open the downloaded EXE.
 3. Pick your settings and click **Apply**.
 
 Your choices are saved when you Apply or close the app. Apply also keeps the settings active and retries recognized resets while the same game process is running. If you restart the game, click Apply again. **Reset** stops this and restores the original values where they can still be verified.
 
-The download includes the .NET 8 Desktop Runtime. Keep the extracted files together.
+Standalone is a single EXE with the .NET 8 Desktop Runtime included. The optional Small download needs the .NET 8 Desktop Runtime for x64 already installed. Npcap is needed for lobby scanning with either download.
 
 ## What you can change
 
@@ -39,7 +41,7 @@ The connection indicator updates automatically. Details about the game build, se
 
 Install [Npcap](https://npcap.com/#download), join a lobby, then click **Scan lobby**. The busiest connection appears as the likely host. Steam relays can make that estimate inaccurate.
 
-To block or unblock an address, open MW2 Control as administrator. Blocking can disconnect you and affect other lobbies sharing the same IP. You can remove a block from the list in the app.
+Block and Unblock request administrator access when needed. Blocking can disconnect you and affect other lobbies sharing the same IP. You can remove a block from the list in the app. The adapter used for a successful scan is remembered.
 
 ## A few things to know
 
@@ -55,6 +57,15 @@ You'll need Windows and the .NET 8 SDK.
 pwsh -File scripts/Build-Preview.ps1
 ```
 
-The build is in `out/release-1.0`. This developer build needs the .NET 8 Desktop Runtime for x64.
+The build is in `out/release-1.1`. This developer build needs the .NET 8 Desktop Runtime for x64.
+
+To create the single-file downloads, run either command below.
+
+```powershell
+pwsh -File scripts/Build-Download.ps1 -Mode Standalone
+pwsh -File scripts/Build-Download.ps1 -Mode Small
+```
+
+The EXEs are in `out/packaging-1.1/Standalone` and `out/packaging-1.1/Small`. Third-party notices are embedded in the app and available in [docs/licenses](docs/licenses).
 
 See [testing](docs/FINAL-TEST-GUIDE.md), [test results](docs/TEST-REPORT.md) and [version history](CHANGELOG.md) for more detail.

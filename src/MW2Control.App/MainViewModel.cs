@@ -15,6 +15,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     private EngineSnapshot? _snapshot;
     private bool _busy;
     private bool _closed;
+    private string? _operationNotice;
     private double _fov = 90;
     private double _fps = 333;
     private string _lastResult = "Ready. Apply checks the game build before changing settings.";
@@ -31,8 +32,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         ScanCommand = new AsyncCommand(() => RunAsync("Inspecting process…", () =>
         {
             var snapshot = _engine.Inspect();
-            return (snapshot, snapshot.Detail, false);
-        }), () => InputsEnabled && !MaintenanceActive);
+            return new OperationResult(true, snapshot.Detail, snapshot);
+        }, "Choose your settings, then Apply.", "Could not check the game."), () => InputsEnabled && !MaintenanceActive);
 
         ApplyCommand = new AsyncCommand(() =>
         {
@@ -41,16 +42,14 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             var advanced = CaptureAdvancedSettings();
             return RunAsync("Checking and applying settings…", () =>
             {
-                var result = _engine.ApplySettings(tuning, advanced);
-                return (result.Snapshot, result.Message, result.CanMaintainOwned);
-            });
-        }, () => InputsEnabled);
+                return _engine.ApplySettings(tuning, advanced);
+            }, "Settings applied.", "Apply could not be completed.");
+        }, () => InputsEnabled && _snapshot?.State == EngineState.ReadOnlyReady);
 
         ResetCommand = new AsyncCommand(() => RunAsync("Restoring original settings…", () =>
         {
-            var result = _engine.ResetSettings();
-            return (result.Snapshot, result.Message, false);
-        }), () => InputsEnabled);
+            return _engine.ResetSettings();
+        }, "Original settings restored.", "Reset could not be completed."), () => InputsEnabled && (MaintenanceActive || _snapshot?.State == EngineState.ReadOnlyReady));
         LoadPreferences();
         RefreshAdvanced();
     }
@@ -109,10 +108,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             ? value.ToString("0.##", CultureInfo.InvariantCulture) : "—";
     }
 
-    private async Task RunAsync(string pending, Func<(EngineSnapshot Snapshot, string Message, bool Maintain)> operation)
+    private async Task RunAsync(string pending, Func<OperationResult> operation, string completed, string failed)
     {
         if (!InputsEnabled) return;
         Busy = true;
+        _operationNotice = null;
         LastResult = pending;
         var maintain = false;
         await StopMaintenanceAsync();
@@ -124,13 +124,18 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             _snapshot = result.Snapshot;
             LastResult = result.Message;
             AddActivity(result.Message);
-            maintain = result.Maintain;
+            maintain = result.CanMaintainOwned;
+            if (!result.Success)
+                _operationNotice = failed + (maintain ? " Previous settings remain active." : " See Diagnostics.");
+            MaintenanceStatus = _operationNotice ?? completed;
         }
         catch (OperationCanceledException) when (_closed) { }
         catch (Exception ex)
         {
             // A failed operation invalidates the UI's prior permission to write.
             LastResult = "Operation failed: " + ex.Message;
+            _operationNotice = "The operation failed. See Diagnostics.";
+            MaintenanceStatus = _operationNotice;
             _snapshot = new EngineSnapshot(EngineState.Error, string.Empty, null,
                 string.Empty, string.Empty, LastResult, Array.Empty<FeatureReading>());
             AddActivity(LastResult);

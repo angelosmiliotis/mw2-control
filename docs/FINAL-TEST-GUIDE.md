@@ -14,7 +14,8 @@ These checks use test memory and network adapters. They cover validation, partia
 
 ## Checking the app
 
-- Open it with the game closed and check the connection indicator.
+- Open it with the game closed and check the connection indicator. Settings should remain editable while Apply waits for a compatible game.
+- Launch the app again. The existing window should come forward.
 - Open the supported game build and check that the indicator changes.
 - Change settings, close the app, and reopen it. Your choices should be remembered.
 - Resize to the minimum window size. Settings should fit without scrolling.
@@ -37,4 +38,4 @@ Record the app version, game build, settings and relevant Diagnostics messages w
 
 Npcap is required for scanning. Join a lobby and check that Scan lobby becomes Stop scan while observation is running. Check adapter selection if no traffic appears.
 
-Block and unblock checks require administrator access and should use an address you have chosen to block. Confirm the address before adding a rule, then remove it from the app's blocked-address list. The likely host is an estimate and may be a Steam relay.
+Block and unblock checks should use an address you have chosen to block. Confirm the address and approve the Windows administrator prompt, then remove the address from the app's blocked-address list. Also cancel the administrator prompt once and check that the action is reported as cancelled. The likely host is an estimate and may be a Steam relay.

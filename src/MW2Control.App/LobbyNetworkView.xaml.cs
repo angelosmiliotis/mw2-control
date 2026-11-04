@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.IO;
+using System.Text.Json;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Windows;
@@ -12,11 +14,15 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
 {
     private readonly LobbyNetworkService _capture = new();
     private readonly FirewallBlockService _firewall = new();
+    private readonly FirewallActions _firewallActions = new();
+    private readonly PreferencesStore _preferences = PreferencesStore.ForCurrentUser();
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool _busy, _closed;
     private CaptureAdapter? _selectedAdapter;
     private FirewallBlock? _selectedBlock;
+    private string? _preferredAdapterId;
+    private DateTimeOffset? _scanStartedAt;
     public IReadOnlyList<CaptureAdapter> Adapters { get; private set; } = Array.Empty<CaptureAdapter>();
     public IReadOnlyList<PeerSnapshot> Peers { get; private set; } = Array.Empty<PeerSnapshot>();
     public IReadOnlyList<FirewallBlock> Blocks { get; private set; } = Array.Empty<FirewallBlock>();
@@ -25,9 +31,8 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
     public string HostAddress => LikelyHost?.Address ?? "—";
     public string ScanButtonLabel => Capturing ? "Stop scan" : "Scan lobby";
     public string BlocksSummary => Blocks.Count == 0 ? "No blocked addresses." : $"{Blocks.Count} blocked";
-    public string ScanSummary => Capturing
-        ? LikelyHost is null ? "Waiting for lobby traffic…" : $"{Peers.Count} connections observed"
-        : Status.StartsWith("Stopped.", StringComparison.Ordinal) ? "Scan stopped." : Status;
+    public string ScanSummary => NetworkMessages.ScanSummary(Capturing, Peers.Count, Status,
+        _scanStartedAt is { } started && DateTimeOffset.UtcNow - started >= TimeSpan.FromSeconds(8));
     public FirewallBlock? SelectedBlock { get => _selectedBlock; set { _selectedBlock = value; Changed(); } }
     public bool Capturing { get; private set; }
     public bool Idle => !_busy && !_closed;
@@ -44,12 +49,17 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
     {
         InitializeComponent();
         DataContext = this;
+        try { _preferredAdapterId = _preferences.Load().NetworkAdapterId; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        { ActionDetails = "The saved network adapter could not be loaded. " + ex.Message; }
         Loaded += async (_, _) => await Run(LoadBlocks);
-        _timer.Tick += async (_, _) => await Run(async () => Accept(await Task.Run(_capture.Snapshot)), reportErrors: true);
+        _timer.Tick += async (_, _) => await Run(async () => Accept(await Task.Run(_capture.Snapshot)), stopScanOnError: true);
     }
 
     private void Accept(LobbySnapshot snapshot)
     {
+        if (snapshot.Capturing && !Capturing) _scanStartedAt = DateTimeOffset.UtcNow;
+        if (!snapshot.Capturing) _scanStartedAt = null;
         Capturing = snapshot.Capturing;
         Status = snapshot.Status;
         GamePath = snapshot.GamePath;
@@ -57,7 +67,7 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
         if (Capturing && !_closed) _timer.Start(); else _timer.Stop();
     }
 
-    private async Task Run(Func<Task> operation, bool reportErrors = true)
+    private async Task Run(Func<Task> operation, bool stopScanOnError = false)
     {
         if (_closed || !await _gate.WaitAsync(0)) return;
         _busy = true;
@@ -65,13 +75,9 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
         try { await operation(); }
         catch (Exception ex)
         {
-            if (reportErrors)
-            {
-                Status = "Network operation failed: " + ex.Message;
-                ActionResult = Status;
-            }
-            // Stop polling after a backend error; the user can explicitly retry.
-            _timer.Stop();
+            Status = "Network operation failed: " + ex.Message;
+            ActionResult = NetworkMessages.Failure(ex);
+            if (stopScanOnError) _timer.Stop();
         }
         finally { _busy = false; _gate.Release(); Changed(); }
     }
@@ -80,7 +86,7 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
     {
         if (Capturing) { Status = "Stop capture before changing adapters."; return; }
         Adapters = await Task.Run(_capture.ListAdapters);
-        _selectedAdapter = Adapters.FirstOrDefault(a => a.Id == SelectedAdapter?.Id);
+        _selectedAdapter = Adapters.FirstOrDefault(a => a.Id == (SelectedAdapter?.Id ?? _preferredAdapterId));
         Status = Adapters.Count == 0 ? "No capture adapters available. Check Npcap installation and permissions." : "Choose an adapter before starting capture.";
     });
     private void ToggleCapture(object sender, RoutedEventArgs e)
@@ -94,7 +100,7 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
         if (!CanStart) return;
         await Run(async () =>
         {
-            var selectedId = SelectedAdapter?.Id;
+            var selectedId = SelectedAdapter?.Id ?? _preferredAdapterId;
             var selection = await Task.Run(() =>
             {
                 var adapters = _capture.ListAdapters();
@@ -114,6 +120,14 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
             var result = await Task.Run(() => _capture.Start(adapter.Id));
             Accept(await Task.Run(_capture.Snapshot));
             Status = result.Message;
+            ActionResult = result.Success ? string.Empty : "The scan could not start. Open Network options for details.";
+            if (result.Success)
+            {
+                _preferredAdapterId = adapter.Id;
+                try { _preferences.Update(current => current with { NetworkAdapterId = adapter.Id }); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                { ActionDetails = "The network adapter could not be saved. " + ex.Message; }
+            }
         });
     }
     private static CaptureAdapter? SuggestAdapter(IReadOnlyList<CaptureAdapter> adapters)
@@ -170,7 +184,7 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
                 ActionResult = "The lobby or traffic leader changed during confirmation. Review the current IP and try again.";
                 return;
             }
-            var result = await Task.Run(() => _firewall.Block(peer.Address, path, true));
+            var result = await _firewallActions.RunAsync(new("block", peer.Address, path), true);
             ActionDetails = result.Message;
             ActionResult = result.Success ? $"Blocked {peer.Address} for MW2." : FriendlyFailure(result.Message);
             await LoadBlocks();
@@ -184,13 +198,15 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
         {
             if (!Confirm("Unblock this address?", block.Address,
                 "Remove this MW2 Control block and allow connections to this address again?")) return;
-            var result = await Task.Run(() => _firewall.Unblock(block.Id, true));
+            var result = await _firewallActions.RunAsync(new("unblock", BlockId: block.Id), true);
             ActionDetails = result.Message;
             ActionResult = result.Success ? $"Unblocked {block.Address}." : FriendlyFailure(result.Message);
             await LoadBlocks();
         });
     }
     private static string FriendlyFailure(string message) =>
+        message.Contains("cancelled", StringComparison.OrdinalIgnoreCase) ? "Firewall change cancelled." :
+        message.Contains("timed out", StringComparison.OrdinalIgnoreCase) ? "The administrator request timed out. Check blocked addresses before trying again." :
         message.Contains("0x80070005", StringComparison.OrdinalIgnoreCase) ||
         message.Contains("Access is denied", StringComparison.OrdinalIgnoreCase)
             ? "Open MW2 Control as administrator to block or unblock an address."

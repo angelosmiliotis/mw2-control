@@ -15,13 +15,84 @@ public sealed class TuningTransaction
     private readonly Dictionary<TuningFeature, Original> originals = [];
     private bool maintenanceSeeded;
 
-    private sealed class Original(ulong address, byte[] bytes)
+    internal sealed class Original(ulong address, byte[] bytes)
     {
         public ulong Address { get; } = address;
         public byte[] Bytes { get; } = (byte[])bytes.Clone();
         public byte[]? Owned { get; set; }
         public byte[]? Target { get; set; }
         public byte[]? MaintenanceMetadata { get; init; }
+    }
+
+    internal sealed record Checkpoint(Dictionary<TuningFeature, Original> Originals,
+        ValidatedFeature[] Values, bool MaintenanceSeeded);
+
+    internal Checkpoint CaptureCheckpoint(TuningRequest request)
+    {
+        lock (gate)
+        {
+            var validation = TuningValidation.ValidateRequest(request);
+            DvarValidator.Require(validation.Success, validation.Message);
+            CheckSession();
+            var values = ReadApplyValues();
+            foreach (var value in values) ReadMaintenanceMetadata(value.Feature, value.Address);
+            return new(CloneOriginals(), values, maintenanceSeeded);
+        }
+    }
+
+    internal TransactionResult RollbackTo(Checkpoint checkpoint)
+    {
+        lock (gate)
+        {
+            try
+            {
+                CheckSession();
+                var plans = new List<Plan>();
+                foreach (var before in checkpoint.Values)
+                {
+                    var current = DvarValidator.Resolve(memory, before.Feature, requireWritable: true);
+                    DvarValidator.Require(current.Address == before.Address, "Dvar mapping changed during settings rollback.");
+                    ReadMaintenanceMetadata(before.Feature, current.Address);
+                    if (current.RawValue.AsSpan().SequenceEqual(before.RawValue)) continue;
+                    DvarValidator.Require(originals.TryGetValue(before.Feature, out var original) &&
+                        original.Address == current.Address && original.Owned is not null &&
+                        current.RawValue.AsSpan().SequenceEqual(original.Owned), "Settings rollback cannot identify the current tuning bytes.");
+                    plans.Add(new(before.Feature, current.Address, current.RawValue, before.RawValue, Clone(original!.Owned)));
+                }
+                var result = Execute(plans, restoring: false, maintaining: true);
+                if (!result.Success) { maintenanceSeeded = false; return result; }
+                originals.Clear();
+                foreach (var pair in checkpoint.Originals) originals.Add(pair.Key, pair.Value);
+                maintenanceSeeded = checkpoint.MaintenanceSeeded;
+                return new(true, "Previous tuning settings restored.");
+            }
+            catch (Exception ex) when (IsExpectedFailure(ex))
+            {
+                maintenanceSeeded = false;
+                return new(false, "Tuning rollback paused: " + ex.Message);
+            }
+        }
+    }
+
+    private Dictionary<TuningFeature, Original> CloneOriginals() => originals.ToDictionary(pair => pair.Key,
+        pair => new Original(pair.Value.Address, pair.Value.Bytes)
+        {
+            Owned = Clone(pair.Value.Owned), Target = Clone(pair.Value.Target),
+            MaintenanceMetadata = Clone(pair.Value.MaintenanceMetadata)
+        });
+
+    private ValidatedFeature[] ReadApplyValues()
+    {
+        var current = Features.Select(f => DvarValidator.Resolve(memory, f, requireWritable: true)).ToArray();
+        foreach (var value in current)
+        {
+            if (!originals.TryGetValue(value.Feature, out var original) || original.Owned is null) continue;
+            DvarValidator.Require(original.Address == value.Address, "Dvar mapping changed since originals were captured.");
+            DvarValidator.Require(value.RawValue.AsSpan().SequenceEqual(original.Owned) ||
+                value.RawValue.AsSpan().SequenceEqual(original.Bytes),
+                ConflictDiagnostics.Tuning(value.Feature, value.RawValue, original.Owned, "last owned", "Apply"));
+        }
+        return current;
     }
 
     private sealed record Plan(TuningFeature Feature, ulong Address, byte[] Before, byte[] Desired, byte[]? PreviousOwned);
@@ -70,7 +141,9 @@ public sealed class TuningTransaction
         }
     }
 
-    public TransactionResult Apply(TuningRequest request, bool privateSessionConfirmed)
+    public TransactionResult Apply(TuningRequest request, bool privateSessionConfirmed) => Apply(request, privateSessionConfirmed, false);
+
+    internal TransactionResult Apply(TuningRequest request, bool privateSessionConfirmed, bool validateMetadata)
     {
         lock (gate)
         {
@@ -83,26 +156,13 @@ public sealed class TuningTransaction
                 // A no-op or restored value has no ownership to protect on the next Apply.
                 foreach (var feature in originals.Where(pair => pair.Value.Owned is null).Select(pair => pair.Key).ToArray())
                     originals.Remove(feature);
-                var current = Features.Select(f => DvarValidator.Resolve(memory, f, requireWritable: true)).ToArray();
-                // Preflight both features before capturing originals or beginning any write.
-                foreach (var value in current)
-                {
-                    if (!originals.TryGetValue(value.Feature, out var original)) continue;
-                    DvarValidator.Require(original.Address == value.Address, "Dvar mapping changed since originals were captured. Explicitly reset the session to forget restore history before tuning the new mapping.");
-                    // A user-triggered Apply may retry after exact original-byte reset.
-                    // This does not attribute the reset to the game, change the original,
-                    // or relax Restore/rollback ownership. Unrelated third values fail.
-                    DvarValidator.Require(value.RawValue.AsSpan().SequenceEqual(original.Owned ?? original.Bytes) ||
-                        value.RawValue.AsSpan().SequenceEqual(original.Bytes),
-                        ConflictDiagnostics.Tuning(value.Feature, value.RawValue, original.Owned ?? original.Bytes,
-                            original.Owned is null ? "captured baseline" : "last owned", "Apply"));
-                }
+                var current = ReadApplyValues();
                 foreach (var value in current)
                     originals.TryAdd(value.Feature, new Original(value.Address, value.RawValue)
                     { MaintenanceMetadata = TryCaptureMaintenanceMetadata(value.Feature, value.Address) });
                 var plans = current.Select(value => new Plan(value.Feature, value.Address, value.RawValue,
                     DvarValidator.Encode(value.Feature, request), Clone(originals[value.Feature].Owned))).ToArray();
-                var result = Execute(plans, restoring: false);
+                var result = Execute(plans, restoring: false, maintaining: validateMetadata);
                 maintenanceSeeded = result.Success && HasMaintenanceTargets && originals.Values.Where(original => original.Target is not null)
                     .All(original => original.MaintenanceMetadata is not null);
                 return result;

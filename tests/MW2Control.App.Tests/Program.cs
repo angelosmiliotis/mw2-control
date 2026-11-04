@@ -19,7 +19,8 @@ internal static class Program
                 await Smoke();
                 await Preferences();
                 await ConnectionAndRecovery();
-                Console.WriteLine("PASS: synthetic view-model lifecycle, preferences and recovery (no windows/native APIs)");
+                await WorkflowTests.RunAsync();
+                Console.WriteLine("PASS: headless app checks (no game access or firewall changes)");
             }
             catch (Exception ex) { Console.Error.WriteLine(ex); exit = 1; }
             finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Background); }
@@ -112,11 +113,15 @@ internal static class Program
         try
         {
             Assert(!vm.MaintenanceActive && memory.Writes == 0, "default stopped/no writes");
-            Assert(vm.ApplyCommand.CanExecute(null), "Apply is available before manual inspection");
+            Assert(!vm.ApplyCommand.CanExecute(null), "Apply waits for a compatible game connection");
             vm.RequestedFov = 95;
             vm.RequestedFps = 165;
             vm.Ping.Requested = true;
             Assert(memory.Writes == 0, "staging requests does not write");
+
+            vm.ScanCommand.Execute(null);
+            await Until(() => !vm.Busy);
+            Assert(vm.ApplyCommand.CanExecute(null), "Apply becomes available after compatible inspection");
 
             vm.ApplyCommand.Execute(null);
             await Until(() => !vm.Busy);
@@ -146,8 +151,8 @@ internal static class Program
             vm.Fullbright.Requested = true; // Exercise core refusal independently of the UI toggle guard.
             vm.ApplyCommand.Execute(null);
             await Until(() => !vm.Busy);
-            Assert(vm.LastResult.StartsWith("Partially applied.") && !vm.MaintenanceActive,
-                "partial Apply reports the failed group and leaves retention stopped");
+            Assert(vm.LastResult.StartsWith("Settings were not applied.") && !vm.MaintenanceActive,
+                "failed preflight leaves all settings unchanged and reports the error");
             vm.Fullbright.Requested = false;
             vm.ApplyCommand.Execute(null);
             await Until(() => !vm.Busy && vm.MaintenanceActive);

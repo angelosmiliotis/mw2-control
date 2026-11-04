@@ -1,11 +1,12 @@
-MW2 Control 1.0
+MW2 Control 1.1
 
-Extract the entire ZIP, then open MW2Control.exe.
-The Windows x64 download includes the .NET 8 Desktop Runtime.
-Keep the extracted files together.
+Open the Standalone EXE for Windows x64. It includes the .NET 8 Desktop
+Runtime. The optional Small EXE needs the .NET 8 Desktop Runtime for x64
+already installed. Version 1.1 is a test release.
 
-Start MW2 (2009) Multiplayer through Steam. Pick your settings and click
-Apply. Your choices are saved when you Apply or close the app.
+Pick your settings, then start MW2 (2009) Multiplayer through Steam.
+Apply becomes available when the app detects a compatible game.
+Your choices are saved when you Apply or close the app.
 
 The app detects the running game and keeps your applied settings active.
 It retries recognized resets while the same game process is running.
@@ -13,9 +14,10 @@ Click Apply again after restarting the game. Reset stops automatic
 recovery and restores original values where they can still be verified.
 
 Lobby Network needs Npcap from https://npcap.com/#download.
-Join a lobby, then click Scan lobby. Open MW2 Control as administrator
-when you want to block or unblock an IP. The likely host is an estimate,
-and Steam relays can affect the result.
+Join a lobby, then click Scan lobby. The app remembers the adapter used
+for a successful scan. Block and Unblock ask for administrator access
+when needed. The likely host is an estimate, and Steam relays can affect
+the result.
 
 Report a problem or suggest a change
 https://github.com/angelosmiliotis/mw2-control/issues/new/choose

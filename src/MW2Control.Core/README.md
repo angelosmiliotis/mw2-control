@@ -12,7 +12,7 @@ Restore uses the original values captured for that process. A replacement proces
 
 ## Applying and keeping settings
 
-`ApplySettings(TuningRequest, AdvancedSettings)` applies FOV/FPS, followed by audio, visuals and scoreboard settings. The two groups have separate transactions. A failure in the second group can leave the first group applied, and the result reports this.
+`ApplySettings(TuningRequest, AdvancedSettings)` checks both groups before writing. It records the previous values and restore history, applies FOV/FPS, then audio, visuals and scoreboard settings. An interrupted operation rolls back through the same address and ownership guards. Successful rollback restores the previous recovery targets. Concurrent changes that cannot be attributed to the app prevent rollback and stop recovery.
 
 `MaintainOwned(true)` performs one recovery check against the existing session. The app schedules checks after Apply. It can recover a captured baseline or a recognized reset value, including FOV 65 and FPS 85 on the supported build. Temporary failures preserve the last successful requests for another checked attempt. Unknown values wait for recognizable data. A process-lifetime change stops recovery.
 

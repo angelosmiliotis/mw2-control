@@ -31,17 +31,17 @@ public sealed partial class MainViewModel
                             Refresh();
                         }
                     }
+                    catch (Exception ex) when (!token.IsCancellationRequested)
+                    {
+                        if (_snapshot?.Detail != ex.Message) AddActivity("Connection check failed. " + ex.Message);
+                        _snapshot = new(EngineState.Error, "iw4mp.exe", null, "", "", ex.Message, Array.Empty<FeatureReading>());
+                        Refresh();
+                    }
                     finally { _gate.Release(); }
                 }
                 await Task.Delay(2000, token);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        catch (Exception ex)
-        {
-            _snapshot = new(EngineState.Error, "iw4mp.exe", null, "", "", ex.Message, Array.Empty<FeatureReading>());
-            AddActivity("Connection check failed. " + ex.Message);
-            Refresh();
-        }
     }
 }

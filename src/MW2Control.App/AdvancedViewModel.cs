@@ -14,17 +14,21 @@ public sealed partial class MainViewModel
         public bool Requested { get => _requested; set { _requested = value; PropertyChanged?.Invoke(this, new(nameof(Requested))); PropertyChanged?.Invoke(this, new(nameof(Editable))); } }
         public bool Available { get; private set; }
         private bool _enabled;
-        public bool Editable => _enabled && (Available || Requested);
+        private bool _allowStaging;
+        public bool Editable => _enabled && (_allowStaging || Available || Requested);
         public string Reading { get; private set; } = "Not inspected. Scan to validate this capability.";
         public AdvancedFeature(string id, string label, string description) => (Id, Label, Description) = (id, label, description);
-        public void Update(FeatureReading? reading, bool enabled)
+        public void Update(FeatureReading? reading, bool enabled) => Update(reading, enabled, false);
+
+        internal void Update(FeatureReading? reading, bool enabled, bool allowStaging)
         {
             var available = reading?.Supported != false;
             var description = reading is null ? "Not inspected or mapping unavailable." :
                 $"{(reading.Supported ? "Supported" : "Unavailable")} · observed: {reading.ObservedValue?.ToString("0.##") ?? "—"} · {reading.Detail}";
-            if (Available == available && _enabled == enabled && Reading == description) return;
+            if (Available == available && _enabled == enabled && _allowStaging == allowStaging && Reading == description) return;
             Available = available;
             _enabled = enabled;
+            _allowStaging = allowStaging;
             Reading = description;
             PropertyChanged?.Invoke(this, new(string.Empty));
         }
@@ -43,7 +47,8 @@ public sealed partial class MainViewModel
     public IReadOnlyList<string> SpecularChoices { get; } = new[] { "Original", "Black / off", "Native", "White / shiny" };
     public int SpecularChoice { get; set; }
     public bool SpecularAvailable => InputsEnabled && !Features.Any(f => f.Id == "specular" && !f.Supported);
-    public bool SpecularEditable => InputsEnabled && (SpecularAvailable || SpecularChoice != 0);
+    private bool CanStageSettings => _snapshot is null || _snapshot.State == EngineState.GameNotRunning;
+    public bool SpecularEditable => InputsEnabled && (CanStageSettings || SpecularAvailable || SpecularChoice != 0);
     public string SpecularReading => Features.FirstOrDefault(f => f.Id == "specular") is { } r
         ? $"{(r.Supported ? "Supported" : "Unavailable")} · observed: {r.ObservedValue?.ToString("0.##") ?? "—"} · {r.Detail}"
         : "Not inspected or mapping unavailable.";
@@ -54,6 +59,6 @@ public sealed partial class MainViewModel
     private void RefreshAdvanced()
     {
         foreach (var feature in AudioFeatures.Concat(VisualFeatures).Concat(HudFeatures))
-            feature.Update(Features.FirstOrDefault(f => f.Id == feature.Id), InputsEnabled);
+            feature.Update(Features.FirstOrDefault(f => f.Id == feature.Id), InputsEnabled, CanStageSettings);
     }
 }

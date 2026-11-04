@@ -1,6 +1,6 @@
 param(
-    [ValidateSet('first-preview', 'release-candidate', 'repair-0.3', 'preview-0.4', 'preview-0.4.1', 'preview-0.4.2', 'preview-0.4.3', 'preview-0.4.4', 'release-1.0')]
-    [string]$Flavor = 'release-1.0'
+    [ValidateSet('first-preview', 'release-candidate', 'repair-0.3', 'preview-0.4', 'preview-0.4.1', 'preview-0.4.2', 'preview-0.4.3', 'preview-0.4.4', 'release-1.0', 'release-1.1')]
+    [string]$Flavor = 'release-1.1'
 )
 
 $ErrorActionPreference = 'Stop'

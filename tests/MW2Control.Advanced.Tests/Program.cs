@@ -1009,7 +1009,7 @@ Test("combined apply never opens a replacement target between groups", () =>
     Equal(0, replacement.WriteCalls);
 });
 
-Test("combined advanced failure preserves successful tuning for reset", () =>
+Test("combined preflight rejects unavailable advanced settings before any tuning write", () =>
 {
     var memory = FakeMemory.Create();
     memory.Missing(AdvancedDvar.PingGraph);
@@ -1018,12 +1018,12 @@ Test("combined advanced failure preserves successful tuning for reset", () =>
     var result = engine.ApplySettings(new(165, 95), none with { NumericPing = true });
     False(result.Success);
     False(result.CanMaintainOwned);
-    True(result.Message.StartsWith("Partially applied.", StringComparison.Ordinal));
+    True(result.Message.StartsWith("Settings were not applied.", StringComparison.Ordinal));
     Equal(1, source.OpenCalls);
-    Equal(2, memory.WriteCalls);
+    Equal(0, memory.WriteCalls);
     True(engine.ResetSettings().Success);
     Equal(2, source.OpenCalls);
-    Equal(4, memory.WriteCalls);
+    Equal(0, memory.WriteCalls);
 });
 
 
@@ -1085,6 +1085,100 @@ Test("temporary missing dvars recover but process lifetime invalidation stays st
     False(engine.MaintainOwned(true).CanMaintainOwned);
     memory.IdentityValid = true;
     False(engine.MaintainOwned(true).CanMaintainOwned);
+});
+
+Test("combined preflight validates tuning types and domains before any write", () =>
+{
+    var memory = FakeMemory.Create();
+    memory.Put(0x21010C, [0]);
+    using var engine = new ControlEngine(new FakeSource(memory));
+    var result = engine.ApplySettings(new(333, 95), none with { NumericPing = true });
+    False(result.Success);
+    False(result.CanMaintainOwned);
+    Equal(0, memory.WriteCalls);
+});
+
+Test("combined Apply rechecks metadata between tuning writes", () =>
+{
+    var memory = FakeMemory.Create();
+    using var engine = new ControlEngine(new FakeSource(memory));
+    memory.AfterWrite = (_, address, _) =>
+    {
+        if (address == 0x210010) memory.Put(0x21010C, [0]);
+    };
+    var result = engine.ApplySettings(new(333, 95), none);
+    False(result.Success);
+    False(result.CanMaintainOwned);
+    Equal(144, BinaryPrimitives.ReadInt32LittleEndian(memory.Raw(0x210110, 4)));
+    True(memory.Writes.All(write => write.Address != 0x210110));
+});
+
+Test("failed replacement preflight preserves previously applied targets and recovery", () =>
+{
+    var memory = FakeMemory.Create();
+    using var engine = new ControlEngine(new FakeSource(memory));
+    True(engine.ApplySettings(new(165, 95), none).Success);
+    var writes = memory.WriteCalls;
+    memory.Missing(AdvancedDvar.PingGraph);
+    var failedApply = engine.ApplySettings(new(333, 100), none with { NumericPing = true });
+    False(failedApply.Success);
+    True(failedApply.CanMaintainOwned);
+    Equal(writes, memory.WriteCalls);
+    memory.Put32(0x210010, BitConverter.SingleToInt32Bits(65));
+    memory.Put32(0x210110, 85);
+    True(engine.MaintainOwned(true).Success);
+    Equal(95f, BitConverter.ToSingle(memory.Raw(0x210010, 4)));
+    Equal(165, BinaryPrimitives.ReadInt32LittleEndian(memory.Raw(0x210110, 4)));
+});
+
+Test("a late advanced write failure restores previous tuning and maintenance history", () =>
+{
+    var memory = FakeMemory.Create();
+    using var engine = new ControlEngine(new FakeSource(memory));
+    True(engine.ApplySettings(new(165, 95), none with { NumericPing = true }).Success);
+    var failOnce = true;
+    memory.BeforeWrite = (_, address, _) =>
+    {
+        if (address != FakeMemory.Value(AdvancedDvar.PingText) || !failOnce) return;
+        failOnce = false;
+        throw new IOException("Interrupted scoreboard write.");
+    };
+    var failedApply = engine.ApplySettings(new(240, 100), none);
+    False(failedApply.Success);
+    True(failedApply.CanMaintainOwned);
+    True(failedApply.Message.Contains("Previous settings were restored.", StringComparison.Ordinal));
+    Equal(95f, BitConverter.ToSingle(memory.Raw(0x210010, 4)));
+    Equal(165, BinaryPrimitives.ReadInt32LittleEndian(memory.Raw(0x210110, 4)));
+    Equal(1, memory.Current(AdvancedDvar.PingText));
+    Equal(0, memory.Current(AdvancedDvar.PingGraph));
+    memory.BeforeWrite = null;
+    memory.Put32(0x210010, BitConverter.SingleToInt32Bits(65));
+    True(engine.MaintainOwned(true).Success);
+    Equal(95f, BitConverter.ToSingle(memory.Raw(0x210010, 4)));
+    True(engine.ResetSettings().Success);
+    Equal(90f, BitConverter.ToSingle(memory.Raw(0x210010, 4)));
+    Equal(144, BinaryPrimitives.ReadInt32LittleEndian(memory.Raw(0x210110, 4)));
+});
+
+Test("settings rollback refuses another writer's bytes and stops automatic writes", () =>
+{
+    var memory = FakeMemory.Create();
+    using var engine = new ControlEngine(new FakeSource(memory));
+    True(engine.ApplySettings(new(165, 95), none).Success);
+    memory.BeforeWrite = (_, address, _) =>
+    {
+        if (address != FakeMemory.Value(AdvancedDvar.StreamEnabled)) return;
+        memory.Put32(0x210010, BitConverter.SingleToInt32Bits(70));
+        throw new IOException("Concurrent value change.");
+    };
+    var failedApply = engine.ApplySettings(new(240, 100), none with { MuteStreams = true });
+    False(failedApply.Success);
+    False(failedApply.CanMaintainOwned);
+    Equal(70f, BitConverter.ToSingle(memory.Raw(0x210010, 4)));
+    True(failedApply.Message.Contains("Rollback needs attention.", StringComparison.Ordinal));
+    var writes = memory.WriteCalls;
+    False(engine.MaintainOwned(true).CanMaintainOwned);
+    Equal(writes, memory.WriteCalls);
 });
 
 Console.WriteLine($"Results: {passed} passed, {failed} failed, {passed + failed} total (synthetic only)");

@@ -84,15 +84,38 @@ public sealed class ControlEngine : IDisposable
 
             return WithSession(() =>
             {
-                var tuningResult = OperateHeld(() => transaction!.Apply(tuning, true), restoring: false, advanced: false);
-                if (!tuningResult.Success)
-                    return new(false, "Tuning failed. " + tuningResult.Message);
+                TuningTransaction.Checkpoint tuningBefore;
+                AdvancedTransaction.Checkpoint advancedBefore;
+                try
+                {
+                    tuningBefore = transaction!.CaptureCheckpoint(tuning);
+                    advancedBefore = advancedTransaction!.CaptureCheckpoint(advanced);
+                }
+                catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex))
+                {
+                    return new(false, "Settings were not applied. " + ex.Message);
+                }
 
-                var advancedResult = OperateHeld(() => advancedTransaction!.Apply(advanced, true), restoring: false, advanced: true);
-                if (!advancedResult.Success) maintenanceFaulted = true;
-                var summary = advancedResult.Success ? "Applied." : "Partially applied.";
-                return new(advancedResult.Success, $"{summary} Tuning: {tuningResult.Message} Audio, visuals and HUD: {advancedResult.Message}");
-            });
+                var previousFault = maintenanceFaulted;
+                var tuningResult = OperateHeld(() => transaction!.Apply(tuning, true, validateMetadata: true), restoring: false, advanced: false);
+                var advancedResult = tuningResult.Success
+                    ? OperateHeld(() => advancedTransaction!.Apply(advanced, true), restoring: false, advanced: true)
+                    : new TransactionResult(false, "Advanced settings were not changed.");
+                if (tuningResult.Success && advancedResult.Success)
+                    return new(true, "Applied. " + tuningResult.Message + " " + advancedResult.Message);
+
+                var advancedRollback = advancedTransaction!.RollbackTo(advancedBefore);
+                var tuningRollback = transaction!.RollbackTo(tuningBefore);
+                maintenanceFaulted = previousFault || !advancedRollback.Success || !tuningRollback.Success;
+                lastWriteSession = transaction.HasMaintenanceTargets ? memory!.Identity : null;
+                lastAdvancedWriteSession = advancedTransaction.HasMaintenanceTargets ? memory!.Identity : null;
+                var rollback = advancedRollback.Success && tuningRollback.Success
+                    ? "Previous settings were restored."
+                    : "Rollback needs attention. " + tuningRollback.Message + " " + advancedRollback.Message;
+                var summary = advancedRollback.Success && tuningRollback.Success
+                    ? "Settings were not applied. " : "Settings were only partly applied. ";
+                return new(false, summary + tuningResult.Message + " " + advancedResult.Message + " " + rollback);
+            }, preserveMaintenance: true);
         }
     }
 
@@ -222,7 +245,7 @@ public sealed class ControlEngine : IDisposable
         return result;
     }
 
-    private OperationResult WithSession(Func<TransactionResult> operation)
+    private OperationResult WithSession(Func<TransactionResult> operation, bool preserveMaintenance = false)
     {
         if (disposed) return new(false, "The engine is disposed.", Empty(EngineState.Error, "The engine is disposed."));
         try
@@ -235,7 +258,7 @@ public sealed class ControlEngine : IDisposable
             catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex)) { snapshot = Failure(ex); }
             return new(result.Success, result.Message, snapshot)
             {
-                CanMaintainOwned = result.Success && snapshot.State == EngineState.ReadOnlyReady && !maintenanceFaulted &&
+                CanMaintainOwned = (result.Success || preserveMaintenance) && snapshot.State == EngineState.ReadOnlyReady && !maintenanceFaulted &&
                     HasMaintainableTargets()
             };
         }

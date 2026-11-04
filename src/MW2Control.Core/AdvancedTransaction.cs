@@ -21,13 +21,77 @@ public sealed class AdvancedTransaction
     private readonly object gate = new();
     private readonly Dictionary<AdvancedDvar, Original> originals = [];
     private bool maintenanceSeeded;
-    private sealed class Original(ulong address, byte[] bytes)
+    internal sealed class Original(ulong address, byte[] bytes)
     {
         public ulong Address { get; } = address;
         public byte[] Bytes { get; } = (byte[])bytes.Clone();
         public byte[]? Owned { get; set; }
         public byte[]? Target { get; set; }
     }
+
+    internal sealed record Checkpoint(Dictionary<AdvancedDvar, Original> Originals,
+        (AdvancedDvar Feature, ulong Address, byte[] RawValue)[] Values, bool MaintenanceSeeded);
+
+    internal Checkpoint CaptureCheckpoint(AdvancedSettings settings)
+    {
+        lock (gate)
+        {
+            var validation = AdvancedValidation.ValidateSettings(settings);
+            DvarValidator.Require(validation.Success, validation.Message);
+            CheckSession();
+            var prepared = Prepare(Requests(settings));
+            var saved = originals.ToDictionary(pair => pair.Key, pair => new Original(pair.Value.Address, pair.Value.Bytes)
+            { Owned = Clone(pair.Value.Owned), Target = Clone(pair.Value.Target) });
+            var values = prepared.Plans.Select(plan => (plan.Feature, plan.Address, plan.Before)).ToArray();
+            return new(saved, values, maintenanceSeeded);
+        }
+    }
+
+    internal TransactionResult RollbackTo(Checkpoint checkpoint)
+    {
+        lock (gate)
+        {
+            try
+            {
+                CheckSession();
+                var plans = new List<Plan>();
+                foreach (var before in checkpoint.Values)
+                {
+                    var current = AdvancedDvarValidator.Resolve(memory, before.Feature, requireWritable: true);
+                    DvarValidator.Require(current.Address == before.Address, "Dvar mapping changed during settings rollback.");
+                    if (current.RawValue.AsSpan().SequenceEqual(before.RawValue)) continue;
+                    DvarValidator.Require(originals.TryGetValue(before.Feature, out var original) &&
+                        original.Address == current.Address && original.Owned is not null &&
+                        current.RawValue.AsSpan().SequenceEqual(original.Owned), "Settings rollback cannot identify the current advanced bytes.");
+                    plans.Add(new(before.Feature, current.Address, current.RawValue, before.RawValue, Clone(original!.Owned), false));
+                }
+                var result = Execute(plans);
+                if (!result.Success) { maintenanceSeeded = false; return result; }
+                originals.Clear();
+                foreach (var pair in checkpoint.Originals) originals.Add(pair.Key, pair.Value);
+                maintenanceSeeded = checkpoint.MaintenanceSeeded;
+                return new(true, "Previous audio, visual and scoreboard settings restored.");
+            }
+            catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex))
+            {
+                maintenanceSeeded = false;
+                return new(false, "Advanced rollback paused: " + ex.Message);
+            }
+        }
+    }
+
+    private static (AdvancedDvar Feature, int? Target)[] Requests(AdvancedSettings settings) =>
+    [
+        (AdvancedDvar.StreamEnabled, settings.MuteStreams ? 0 : null),
+        (AdvancedDvar.Fullbright, settings.Fullbright ? 1 : null),
+        (AdvancedDvar.Fog, settings.NoFog ? 0 : null),
+        (AdvancedDvar.Glow, settings.NoGlow ? 0 : null),
+        (AdvancedDvar.SpecularMap, settings.SpecularMode),
+        (AdvancedDvar.Detail, settings.NoDetailOverlays ? 0 : null),
+        (AdvancedDvar.DetailMap, settings.NoDetailOverlays ? 0 : null),
+        (AdvancedDvar.PingText, settings.NumericPing ? 1 : null),
+        (AdvancedDvar.PingGraph, settings.NumericPing ? 0 : null)
+    ];
     private sealed record Plan(AdvancedDvar Feature, ulong Address, byte[] Before, byte[] Desired, byte[]? PreviousOwned, bool Restore);
     private sealed class Attempt(Plan plan)
     {
@@ -115,19 +179,7 @@ public sealed class AdvancedTransaction
             try
             {
                 CheckSession();
-                var requested = new (AdvancedDvar Feature, int? Target)[]
-                {
-                    (AdvancedDvar.StreamEnabled, settings.MuteStreams ? 0 : null),
-                    (AdvancedDvar.Fullbright, settings.Fullbright ? 1 : null),
-                    (AdvancedDvar.Fog, settings.NoFog ? 0 : null),
-                    (AdvancedDvar.Glow, settings.NoGlow ? 0 : null),
-                    (AdvancedDvar.SpecularMap, settings.SpecularMode),
-                    (AdvancedDvar.Detail, settings.NoDetailOverlays ? 0 : null),
-                    (AdvancedDvar.DetailMap, settings.NoDetailOverlays ? 0 : null),
-                    (AdvancedDvar.PingText, settings.NumericPing ? 1 : null),
-                    (AdvancedDvar.PingGraph, settings.NumericPing ? 0 : null)
-                };
-                var result = PrepareAndExecute(requested);
+                var result = PrepareAndExecute(Requests(settings));
                 maintenanceSeeded = result.Success && HasMaintenanceTargets;
                 return result;
             }
@@ -196,14 +248,24 @@ public sealed class AdvancedTransaction
 
     private TransactionResult PrepareAndExecute(IEnumerable<(AdvancedDvar Feature, int? Target)> requests)
     {
+        var prepared = Prepare(requests);
+        foreach (var feature in prepared.Forget) originals.Remove(feature);
+        foreach (var pair in prepared.Captured) originals[pair.Key] = pair.Value;
+        return prepared.Plans.Count == 0 ? new(true, "No advanced values need changing or restoring.") : Execute(prepared.Plans);
+    }
+
+    private (List<Plan> Plans, Dictionary<AdvancedDvar, Original> Captured, List<AdvancedDvar> Forget)
+        Prepare(IEnumerable<(AdvancedDvar Feature, int? Target)> requests)
+    {
         var plans = new List<Plan>();
         var captured = new Dictionary<AdvancedDvar, Original>();
+        var forget = new List<AdvancedDvar>();
         foreach (var (feature, target) in requests)
         {
             originals.TryGetValue(feature, out var original);
             // False/null is a restore, never a guessed enable/default write. Missing
             // unsupported features with no owned writes are deliberately not resolved.
-            if (target is null && original?.Owned is null) { originals.Remove(feature); continue; }
+            if (target is null && original?.Owned is null) { forget.Add(feature); continue; }
             var value = AdvancedDvarValidator.Resolve(memory, feature, requireWritable: true);
             if (original?.Owned is not null)
             {
@@ -226,9 +288,7 @@ public sealed class AdvancedTransaction
         }
         // Nothing is captured and no write starts until every requested feature,
         // including both halves of the detail control, passes the entire preflight.
-        foreach (var pair in captured) originals[pair.Key] = pair.Value;
-        if (plans.Count == 0) return new(true, "No advanced values owned by this session need changing or restoring.");
-        return Execute(plans);
+        return (plans, captured, forget);
     }
 
     private TransactionResult Execute(IReadOnlyList<Plan> plans, bool maintaining = false)

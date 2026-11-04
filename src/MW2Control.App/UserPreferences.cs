@@ -16,17 +16,20 @@ public sealed record UserPreferences
     public bool NoDetailOverlays { get; init; }
     public bool NumericPing { get; init; }
     public int SpecularChoice { get; init; }
+    public string? NetworkAdapterId { get; init; }
 
     public UserPreferences Normalize() => this with
     {
         Fov = double.IsFinite(Fov) ? Math.Clamp(Math.Round(Fov), 65, 100) : 90,
         Fps = double.IsFinite(Fps) ? Math.Clamp(Math.Round(Fps), 30, 500) : 333,
-        SpecularChoice = Math.Clamp(SpecularChoice, 0, 3)
+        SpecularChoice = Math.Clamp(SpecularChoice, 0, 3),
+        NetworkAdapterId = NetworkAdapterId is { Length: > 0 and <= 256 } ? NetworkAdapterId : null
     };
 }
 
 public sealed class PreferencesStore(string path)
 {
+    private static readonly object Gate = new();
     public static PreferencesStore ForCurrentUser() => new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MW2Control", "settings.json"));
 
@@ -39,6 +42,22 @@ public sealed class PreferencesStore(string path)
     }
 
     public void Save(UserPreferences settings)
+    {
+        lock (Gate) Write(settings);
+    }
+
+    public void Update(Func<UserPreferences, UserPreferences> update)
+    {
+        lock (Gate)
+        {
+            UserPreferences current;
+            try { current = Load(); }
+            catch (JsonException) { current = new(); }
+            Write(update(current));
+        }
+    }
+
+    private void Write(UserPreferences settings)
     {
         var fullPath = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
