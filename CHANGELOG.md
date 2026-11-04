@@ -1,5 +1,15 @@
 # Version history
 
+## 1.2 - November 5, 2026
+
+- A new olive-green interface with military artwork and clearer controls.
+- Separate tiles for each visual setting, with icons and switches.
+- Keeps the specular selector together with its label.
+- Scales the interface to fit different window sizes and aspect ratios.
+- Removes the white strip above the custom title bar.
+- Adds FOV and FPS presets and refreshes Diagnostics and Lobby Network.
+- Includes new high-resolution screenshots of all three pages.
+
 ## 1.1 - November 4, 2026
 
 - Downloads as a single EXE with the .NET runtime included.

@@ -1,37 +1,22 @@
 <UserControl x:Class="MW2Control.App.LobbyNetworkView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
- <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="24,20,24,24">
-  <TextBlock Text="Lobby Network" Style="{StaticResource PageTitle}" />
-  <TextBlock Text="Join a lobby and scan to find its likely host." Style="{StaticResource Muted}" Margin="0,0,0,16" />
-  <Border Style="{StaticResource Card}" Padding="20" Margin="0,0,0,14"><StackPanel>
-   <TextBlock Text="LIKELY HOST" Style="{StaticResource Eyebrow}" />
-   <TextBlock Text="{Binding HostAddress}" FontSize="28" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" Margin="0,6,0,4" AutomationProperties.LiveSetting="Polite" />
-   <TextBlock Text="{Binding ScanSummary}" Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,14" />
-   <WrapPanel>
-    <Button Content="{Binding ScanButtonLabel}" Click="ToggleCapture" IsEnabled="{Binding Idle}" Style="{StaticResource PrimaryButton}" Margin="0,0,10,8" />
-    <Button Content="Block likely host" Click="BlockPeer" IsEnabled="{Binding CanBlock}" Margin="0,0,0,8" />
-   </WrapPanel>
-   <TextBlock Text="The busiest connection is an estimate. Steam relays may hide the host." Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,0" />
+ <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="28,22,28,22">
+  <TextBlock Text="YOUR CONNECTIONS" Style="{StaticResource Eyebrow}" /><TextBlock Text="Lobby network" FontSize="33" FontWeight="SemiBold" Margin="0,6,0,6" /><TextBlock Text="Find the likely host. Keep your blocked addresses in one place." Style="{StaticResource Caption}" Margin="0,0,0,22" />
+  <Border Style="{StaticResource Card}" Padding="24,22" Margin="0,0,0,18"><StackPanel>
+   <StackPanel HorizontalAlignment="Center"><TextBlock Text="&#xE968;" Style="{StaticResource Icon}" FontSize="30" HorizontalAlignment="Center" /><TextBlock Text="LIKELY HOST" Style="{StaticResource Eyebrow}" HorizontalAlignment="Center" Margin="0,12,0,4" /><TextBlock Text="{Binding HostAddress}" FontSize="30" FontWeight="SemiBold" Foreground="{StaticResource Accent}" HorizontalAlignment="Center" AutomationProperties.LiveSetting="Polite" /><TextBlock Text="{Binding ScanSummary}" Style="{StaticResource Caption}" TextAlignment="Center" Margin="0,8,0,15" /></StackPanel>
+   <WrapPanel HorizontalAlignment="Center"><Button Content="{Binding ScanButtonLabel}" Click="ToggleCapture" IsEnabled="{Binding Idle}" Style="{StaticResource Primary}" Margin="0,0,12,0" /><Button Content="Block likely host" Click="BlockPeer" IsEnabled="{Binding CanBlock}" Padding="22,13" /></WrapPanel>
+   <TextBlock Text="The busiest connection is an estimate. Steam relays may hide the host." Style="{StaticResource Caption}" TextAlignment="Center" Margin="0,16,0,0" />
    <TextBlock Text="{Binding ActionResult}" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite" />
   </StackPanel></Border>
-  <Border Style="{StaticResource Card}" Padding="20" Margin="0,0,0,14"><StackPanel>
-   <DockPanel Margin="0,0,0,12">
-    <Button DockPanel.Dock="Right" Content="Unblock selected" Click="UnblockPeer" IsEnabled="{Binding CanUnblock}" Margin="12,0,0,0" />
-    <StackPanel VerticalAlignment="Center">
-     <TextBlock Text="Blocked addresses" FontSize="18" FontWeight="SemiBold" />
-     <TextBlock Text="{Binding BlocksSummary}" Style="{StaticResource Muted}" FontSize="12" />
-    </StackPanel>
-   </DockPanel>
-   <ListBox ItemsSource="{Binding Blocks}" SelectedItem="{Binding SelectedBlock}" Background="Transparent" Foreground="{StaticResource TextBrush}" BorderThickness="0" MaxHeight="180" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Blocked IP addresses">
-    <ListBox.ItemTemplate><DataTemplate><Border Padding="8" ToolTip="{Binding GamePath}"><TextBlock Text="{Binding Address}" FontFamily="Consolas" FontSize="15" FontWeight="SemiBold" /></Border></DataTemplate></ListBox.ItemTemplate>
-   </ListBox>
-   <TextBlock Text="Blocks apply to MW2 only and can be removed here." Style="{StaticResource Muted}" FontSize="12" Margin="0,10,0,0" />
+  <Border Style="{StaticResource Card}" Margin="0,0,0,18"><StackPanel>
+   <DockPanel><Button DockPanel.Dock="Right" Content="Unblock selected" Click="UnblockPeer" IsEnabled="{Binding CanUnblock}" Margin="12,0,0,0" /><StackPanel><TextBlock Text="Blocked addresses" FontSize="17" FontWeight="SemiBold" /><TextBlock Text="{Binding BlocksSummary}" Style="{StaticResource Caption}" Margin="0,6,0,0" /></StackPanel></DockPanel>
+   <ListBox ItemsSource="{Binding Blocks}" SelectedItem="{Binding SelectedBlock}" Background="Transparent" Foreground="{StaticResource Ink}" BorderThickness="0" MaxHeight="180" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Blocked IP addresses"><ListBox.ItemTemplate><DataTemplate><Border Padding="8" ToolTip="{Binding GamePath}"><TextBlock Text="{Binding Address}" FontFamily="Consolas" FontSize="15" FontWeight="SemiBold" /></Border></DataTemplate></ListBox.ItemTemplate></ListBox>
+   <TextBlock Text="Blocks apply to MW2 only and can be removed here." Style="{StaticResource Caption}" Margin="0,12,0,0" />
   </StackPanel></Border>
-  <Expander Header="Network options" Foreground="{StaticResource TextBrush}"><StackPanel Margin="0,10,0,0">
-   <TextBlock Text="Choose your network adapter if the scan cannot find lobby traffic. Npcap is required." Style="{StaticResource Muted}" FontSize="12" />
-   <ComboBox ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}" DisplayMemberPath="Label" IsEnabled="{Binding CanChooseAdapter}" Padding="8" Margin="0,8,0,8" AutomationProperties.Name="Network adapter" />
-   <WrapPanel><Button Content="Refresh adapters" Click="RefreshAdapters" IsEnabled="{Binding CanChooseAdapter}" Margin="0,0,8,8" /><Button Content="Refresh blocked addresses" Click="RefreshBlocks" IsEnabled="{Binding Idle}" Margin="0,0,0,8" /></WrapPanel>
-   <TextBlock Text="{Binding Status}" Style="{StaticResource Muted}" FontSize="12" Margin="0,6,0,0" />
-   <TextBlock Text="{Binding ActionDetails}" Style="{StaticResource Muted}" FontSize="12" Margin="0,6,0,0" />
+  <Expander Header="Network options" Foreground="{StaticResource Ink}"><StackPanel Margin="0,10,0,0">
+   <TextBlock Text="Choose your network adapter if the scan cannot find lobby traffic. Npcap is required." Style="{StaticResource Caption}" />
+   <ComboBox ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}" DisplayMemberPath="Label" IsEnabled="{Binding CanChooseAdapter}" Margin="0,10,0,10" AutomationProperties.Name="Network adapter" />
+   <WrapPanel><Button Content="Refresh adapters" Click="RefreshAdapters" IsEnabled="{Binding CanChooseAdapter}" Margin="0,0,10,8" /><Button Content="Refresh blocked addresses" Click="RefreshBlocks" IsEnabled="{Binding Idle}" Margin="0,0,0,8" /></WrapPanel>
+   <TextBlock Text="{Binding Status}" Style="{StaticResource Caption}" Margin="0,6,0,0" /><TextBlock Text="{Binding ActionDetails}" Style="{StaticResource Caption}" Margin="0,6,0,0" />
   </StackPanel></Expander>
  </StackPanel></ScrollViewer>
 </UserControl>

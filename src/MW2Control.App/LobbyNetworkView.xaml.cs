@@ -45,10 +45,13 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
     public string ActionResult { get; private set; } = string.Empty;
     public string ActionDetails { get; private set; } = string.Empty;
 
-    public LobbyNetworkView()
+    public LobbyNetworkView() : this(false) { }
+
+    internal LobbyNetworkView(bool offline)
     {
         InitializeComponent();
         DataContext = this;
+        if (offline) return;
         try { _preferredAdapterId = _preferences.Load().NetworkAdapterId; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         { ActionDetails = "The saved network adapter could not be loaded. " + ex.Message; }

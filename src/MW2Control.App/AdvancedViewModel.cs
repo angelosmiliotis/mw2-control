@@ -45,7 +45,8 @@ public sealed partial class MainViewModel
     public IReadOnlyList<AdvancedFeature> AudioFeatures { get; }
     public IReadOnlyList<AdvancedFeature> VisualFeatures { get; }
     public IReadOnlyList<string> SpecularChoices { get; } = new[] { "Original", "Black / off", "Native", "White / shiny" };
-    public int SpecularChoice { get; set; }
+    private int _specularChoice;
+    public int SpecularChoice { get => _specularChoice; set { _specularChoice = value; Notify(); } }
     public bool SpecularAvailable => InputsEnabled && !Features.Any(f => f.Id == "specular" && !f.Supported);
     private bool CanStageSettings => _snapshot is null || _snapshot.State == EngineState.GameNotRunning;
     public bool SpecularEditable => InputsEnabled && (CanStageSettings || SpecularAvailable || SpecularChoice != 0);

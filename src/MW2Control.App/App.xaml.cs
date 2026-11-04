@@ -2,6 +2,7 @@ using System.Windows;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("MW2Control.App.Tests")]
+[assembly: InternalsVisibleTo("MW2Control.Screenshots")]
 
 namespace MW2Control.App;
 

@@ -1,4 +1,4 @@
-MW2 Control 1.1
+MW2 Control 1.2
 
 Open the Standalone EXE and start MW2 (2009) Multiplayer through Steam.
 The .NET runtime is included. Wait for Connected, choose your settings,

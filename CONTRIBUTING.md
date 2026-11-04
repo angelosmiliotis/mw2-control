@@ -14,7 +14,7 @@ Create the standalone download, including the .NET runtime:
 pwsh -File scripts/Build-Download.ps1
 ```
 
-The EXE is written to `out/packaging-1.1/Standalone`. Third-party license notices are embedded in the app and stored in [docs/licenses](docs/licenses).
+The EXE is written to `out/packaging-1.2/Standalone`. Third-party license notices are embedded in the app and stored in [docs/licenses](docs/licenses).
 
 ## Run the checks
 
@@ -28,3 +28,11 @@ dotnet run --project tests/MW2Control.Network.Tests/MW2Control.Network.Tests.csp
 These checks use test memory and network adapters. They cover settings validation, rollback, saved preferences, connection detection, recovery, packet parsing and firewall requests.
 
 The [core](src/MW2Control.Core/README.md) and [network](src/MW2Control.Network/README.md) notes explain the implementation.
+
+## UI screenshots
+
+```powershell
+dotnet run --project tools/MW2Control.Screenshots/MW2Control.Screenshots.csproj -c Release -- out/screenshots-1.2
+```
+
+This renders the actual application with an isolated, disconnected engine. It checks the control bindings, native window border and six window sizes without opening a visible window or accessing a game, saved user settings, packet capture or firewall rules.
