@@ -1,8 +1,8 @@
 # Version history
 
-## 1.1 - Test release
+## 1.1 - November 4, 2026
 
-- Adds single-file download builds, with a small option for PCs that already have the .NET 8 Desktop Runtime.
+- Downloads as a single EXE with the .NET runtime included.
 - Checks every requested setting before Apply starts writing.
 - Restores the previous settings after an interrupted Apply when the values can still be verified.
 - Keeps the previous successful settings active when a new request fails preflight.

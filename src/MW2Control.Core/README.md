@@ -48,7 +48,7 @@ The dvar name pointer is at +0x00, type at +0x0C, current value at +0x10 and dom
 
 Specular uses Black, Unchanged, White and Gray. The app requests the first three values and can restore a captured Gray value. Its table is at RVA 0x577860, with strings at 0x3C2F14, 0x3C2F20, 0x3C2F2C and 0x3C2F34. Detail-map uses Hidden and Unchanged, with table RVA 0x5779C0 and strings at 0x3C2F3C and 0x3C2F20. Runtime checks include counts, relocated pointers, exact strings and the null terminator.
 
-FOV registers as type 1 with a 65-80 domain. FPS registers as type 5 with a 0-100 domain and default 85. Requested values above these declared limits remain experimental. Requests accepted by the app are FOV 65-100 and FPS 30-500, plus 0 for uncapped FPS.
+Requests accepted by the app are FOV 65-100 and FPS 30-500, plus 0 for uncapped FPS. Runtime validation checks the captured registration metadata before changing current values.
 
 ## Checking the executable on disk
 
@@ -61,6 +61,6 @@ python src/MW2Control.Core/Tools/inspect-profile.py '<absolute iw4mp.exe path>' 
 
 The boolean registration wrapper is at 0x274840, enum wrapper at 0x274B20 and allocator at 0x274E40. FOV registration calls the float wrapper at 0x274C20. FPS registration calls the integer wrapper at 0x274D50.
 
-Offline inspection establishes the layout. In-game effects and behavior across transitions need separate testing. External process writes also have a race between the final check and the native write.
+The inspection tool reads the executable on disk. External process writes have a race between the final check and the native write.
 
-See the [testing guide](../../docs/FINAL-TEST-GUIDE.md) for the automated checks and manual test cases.
+See [Contributing](../../CONTRIBUTING.md) for build and check commands.

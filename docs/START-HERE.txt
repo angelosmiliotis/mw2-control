@@ -1,23 +1,21 @@
 MW2 Control 1.1
 
-Open the Standalone EXE for Windows x64. It includes the .NET 8 Desktop
-Runtime. The optional Small EXE needs the .NET 8 Desktop Runtime for x64
-already installed. Version 1.1 is a test release.
+Open the Standalone EXE and start MW2 (2009) Multiplayer through Steam.
+The .NET runtime is included. Wait for Connected, choose your settings,
+then click Apply. Leave MW2 Control open while you play.
 
-Pick your settings, then start MW2 (2009) Multiplayer through Steam.
-Apply becomes available when the app detects a compatible game.
-Your choices are saved when you Apply or close the app.
+Your choices are remembered. Apply keeps them active and reapplies
+recognized game resets in the same game session. Click Apply again
+after restarting the game. Reset stops this and restores original
+values where they can still be verified.
 
-The app detects the running game and keeps your applied settings active.
-It retries recognized resets while the same game process is running.
-Click Apply again after restarting the game. Reset stops automatic
-recovery and restores original values where they can still be verified.
+Lobby Network needs Npcap: https://npcap.com/#download
+Join a lobby and click Scan lobby. The likely host is an estimate;
+Steam relays can affect the result. Block and Unblock ask for Windows
+administrator access when needed. Blocks remain until you remove them.
 
-Lobby Network needs Npcap from https://npcap.com/#download.
-Join a lobby, then click Scan lobby. The app remembers the adapter used
-for a successful scan. Block and Unblock ask for administrator access
-when needed. The likely host is an estimate, and Steam relays can affect
-the result.
+Settings guide
+https://github.com/angelosmiliotis/mw2-control#settings
 
 Report a problem or suggest a change
 https://github.com/angelosmiliotis/mw2-control/issues/new/choose

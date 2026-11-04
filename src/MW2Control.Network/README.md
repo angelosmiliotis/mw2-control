@@ -24,6 +24,6 @@ Administrator access is required to add or remove rules. Existing unrelated rule
 dotnet run --project tests/MW2Control.Network.Tests/MW2Control.Network.Tests.csproj -c Release
 ```
 
-The 27 cases cover parsing, filtering, rolling counters, capture lifecycle, session changes, address validation and firewall-rule handling. They use test adapters. Npcap access and real firewall behavior need checking on the target Windows setup.
+The 27 cases cover parsing, filtering, rolling counters, capture lifecycle, session changes, address validation and firewall-rule handling. They use test adapters.
 
 References used for the implementation include the [Npcap developer guide](https://npcap.com/guide/npcap-devguide.html), [pcap_next_ex](https://npcap.com/guide/wpcap/pcap_next_ex.html), the [Windows UDP owner table](https://learn.microsoft.com/en-us/windows/win32/api/udpmib/ns-udpmib-mib_udprow_owner_pid) and [Windows Firewall rule API](https://learn.microsoft.com/en-us/windows/win32/api/netfw/nn-netfw-inetfwrule).
