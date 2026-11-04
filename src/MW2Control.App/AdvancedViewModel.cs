@@ -19,25 +19,28 @@ public sealed partial class MainViewModel
         public AdvancedFeature(string id, string label, string description) => (Id, Label, Description) = (id, label, description);
         public void Update(FeatureReading? reading, bool enabled)
         {
-            Available = reading?.Supported != false;
-            _enabled = enabled;
-            Reading = reading is null ? "Not inspected or mapping unavailable." :
+            var available = reading?.Supported != false;
+            var description = reading is null ? "Not inspected or mapping unavailable." :
                 $"{(reading.Supported ? "Supported" : "Unavailable")} · observed: {reading.ObservedValue?.ToString("0.##") ?? "—"} · {reading.Detail}";
+            if (Available == available && _enabled == enabled && Reading == description) return;
+            Available = available;
+            _enabled = enabled;
+            Reading = description;
             PropertyChanged?.Invoke(this, new(string.Empty));
         }
         public event PropertyChangedEventHandler? PropertyChanged;
     }
 
-    public AdvancedFeature Music { get; } = new("music", "Mute streamed sounds", "Music and some streamed audio. Selective ambience and S&D filtering remain unresolved.");
+    public AdvancedFeature Music { get; } = new("music", "Mute streamed sounds", "Mute streamed audio while keeping gameplay cues such as footsteps, gunfire, explosions, and the bomb timer audible.");
     public AdvancedFeature Fullbright { get; } = new("fullbright", "Fullbright", "Validated lighting setting, when available for this build.");
     public AdvancedFeature Fog { get; } = new("fog", "No Fog", "Request fog removal through a validated setting.");
     public AdvancedFeature Glow { get; } = new("glow", "No Glow", "Request glow removal through a validated setting.");
     public AdvancedFeature Detail { get; } = new("detail", "No detail overlays", "Experimental No Camos approximation; actual camo removal is not guaranteed.");
     public AdvancedFeature Ping { get; } = new("ping", "Numeric ping", "Show the connection latency as a number on supported game builds.");
-    public IReadOnlyList<AdvancedFeature> HudFeatures => new[] { Ping };
-    public IReadOnlyList<AdvancedFeature> AudioFeatures => new[] { Music };
-    public IReadOnlyList<AdvancedFeature> VisualFeatures => new[] { Fullbright, Fog, Glow, Detail };
-    public IReadOnlyList<string> SpecularChoices { get; } = new[] { "Restore owned original", "0 · Black / off", "1 · Unchanged / native", "2 · White / shiny" };
+    public IReadOnlyList<AdvancedFeature> HudFeatures { get; }
+    public IReadOnlyList<AdvancedFeature> AudioFeatures { get; }
+    public IReadOnlyList<AdvancedFeature> VisualFeatures { get; }
+    public IReadOnlyList<string> SpecularChoices { get; } = new[] { "Original", "Black / off", "Native", "White / shiny" };
     public int SpecularChoice { get; set; }
     public bool SpecularAvailable => InputsEnabled && !Features.Any(f => f.Id == "specular" && !f.Supported);
     public bool SpecularEditable => InputsEnabled && (SpecularAvailable || SpecularChoice != 0);

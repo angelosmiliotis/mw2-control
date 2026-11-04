@@ -358,7 +358,7 @@ Test("feature readings are independent active-state values with explicit scope",
     True(transaction.Apply(all, true).Success);
     var active = transaction.InspectFeatures();
     True(active.Where(f => f.Id is not ("specular" or "ping")).All(f => f.ObservedValue == 1));
-    True(active.Single(f => f.Id == "music").Detail.Contains("S&D filtering is unsupported", StringComparison.Ordinal));
+    True(active.Single(f => f.Id == "music").Detail.Contains("bomb timer remained audible", StringComparison.Ordinal));
     True(active.Single(f => f.Id == "detail").Detail.Contains("not guaranteed No Camos", StringComparison.Ordinal));
 });
 
@@ -653,17 +653,17 @@ Test("delayed read-only Inspect of baseline preserves held maintenance ledger", 
     Equal(EngineState.ReadOnlyReady, snapshot.State);
     Equal(90d, snapshot.Features.Single(feature => feature.Id == "fov").ObservedValue);
     Equal(2, memory.WriteCalls);
-    Equal(2, source.OpenCalls);
+    Equal(1, source.OpenCalls);
     True(engine.MaintainOwned(true).Success);
     Equal(95f, BitConverter.ToSingle(memory.Raw(0x210010, 4)));
     Equal(165, BinaryPrimitives.ReadInt32LittleEndian(memory.Raw(0x210110, 4)));
-    Equal(2, source.OpenCalls);
+    Equal(1, source.OpenCalls);
     True(memory.Writes.All(write => write.Address is 0x210010 or 0x210110 && write.Bytes.Length == 4));
     Equal(80f, BitConverter.ToSingle(memory.Raw(0x210044, 4)));
     Equal(100, BinaryPrimitives.ReadInt32LittleEndian(memory.Raw(0x210144, 4)));
 });
 
-Test("maintenance ignores unowned values instead of adopting or overwriting them", () =>
+Test("maintenance pauses at an unrelated value even for an already-matching request", () =>
 {
     var memory = FakeMemory.Create();
     var source = new FakeSource(memory);
@@ -671,14 +671,14 @@ Test("maintenance ignores unowned values instead of adopting or overwriting them
     True(engine.Apply(new(0, 90), true).Success);
     memory.Put32(0x210010, BitConverter.SingleToInt32Bits(91));
     memory.Put32(0x210110, 144);
-    True(engine.MaintainOwned(true).Success);
+    False(engine.MaintainOwned(true).Success);
     Equal(91f, BitConverter.ToSingle(memory.Raw(0x210010, 4)));
-    Equal(0, BinaryPrimitives.ReadInt32LittleEndian(memory.Raw(0x210110, 4)));
-    Equal(2, memory.WriteCalls);
+    Equal(144, BinaryPrimitives.ReadInt32LittleEndian(memory.Raw(0x210110, 4)));
+    Equal(1, memory.WriteCalls);
     Equal(1, source.OpenCalls);
 });
 
-Test("unrelated tuning value stops maintenance with no writes and latches failure", () =>
+Test("unrelated tuning value pauses writes and automatically recovers after a recognized reset", () =>
 {
     var memory = FakeMemory.Create();
     var source = new FakeSource(memory);
@@ -688,11 +688,12 @@ Test("unrelated tuning value stops maintenance with no writes and latches failur
     memory.Put32(0x210110, 144);
     var failedTick = engine.MaintainOwned(true);
     False(failedTick.Success);
-    True(failedTick.Message.Contains("observed 70; last owned 100", StringComparison.Ordinal));
+    True(failedTick.Message.Contains("observed 70; last applied 100", StringComparison.Ordinal));
     Equal(2, memory.WriteCalls);
     memory.Put32(0x210010, BitConverter.SingleToInt32Bits(90));
-    False(engine.MaintainOwned(true).Success);
-    Equal(2, memory.WriteCalls);
+    True(failedTick.CanMaintainOwned);
+    True(engine.MaintainOwned(true).Success);
+    Equal(4, memory.WriteCalls);
     Equal(1, source.OpenCalls);
 });
 
@@ -839,8 +840,8 @@ Test("failed maintenance readback rolls back only its group and preserves origin
     Equal(90f, BitConverter.ToSingle(memory.Raw(0x210010, 4)));
     Equal(144, BinaryPrimitives.ReadInt32LittleEndian(memory.Raw(0x210110, 4)));
     Equal(6, memory.WriteCalls);
-    False(engine.MaintainOwned(true).Success);
-    Equal(6, memory.WriteCalls);
+    True(engine.MaintainOwned(true).Success);
+    Equal(8, memory.WriteCalls);
     True(engine.Apply(new(0, 100), true).Success);
     True(engine.Restore(true).Success);
     Equal(90f, BitConverter.ToSingle(memory.Raw(0x210010, 4)));
@@ -925,7 +926,7 @@ Test("combined Apply recaptures unowned settings after the game changes them", (
     using var engine = new ControlEngine(new FakeSource(memory));
     var first = engine.ApplySettings(new(144, 90), none with { NumericPing = true });
     True(first.Success);
-    False(first.CanMaintainOwned);
+    True(first.CanMaintainOwned);
     Equal(0, memory.WriteCalls);
     memory.Put32(0x210010, BitConverter.SingleToInt32Bits(65));
     memory.SetCurrent(AdvancedDvar.PingGraph, 1);
@@ -976,7 +977,7 @@ Test("combined apply and reset acquire once each and report retention eligibilit
     using var engine = new ControlEngine(source);
     var noOp = engine.ApplySettings(new(144, 90), none);
     True(noOp.Success);
-    False(noOp.CanMaintainOwned);
+    True(noOp.CanMaintainOwned);
     Equal(1, source.OpenCalls);
     var applied = engine.ApplySettings(new(165, 95), none with { NumericPing = true });
     True(applied.Success);
@@ -1023,6 +1024,67 @@ Test("combined advanced failure preserves successful tuning for reset", () =>
     True(engine.ResetSettings().Success);
     Equal(2, source.OpenCalls);
     Equal(4, memory.WriteCalls);
+});
+
+
+Test("maintenance recovers a reset between planning and the next write", () =>
+{
+    var memory = FakeMemory.Create();
+    using var engine = new ControlEngine(new FakeSource(memory));
+    True(engine.ApplySettings(new(333, 95), none with { NumericPing = true }).CanMaintainOwned);
+    memory.Put32(0x210010, BitConverter.SingleToInt32Bits(90));
+    memory.Put32(0x210110, 144);
+    memory.AfterWrite = (_, address, _) =>
+    {
+        if (address == 0x210010) memory.Put32(0x210110, 85);
+    };
+    var interrupted = engine.MaintainOwned(true);
+    False(interrupted.Success);
+    True(interrupted.CanMaintainOwned);
+    memory.AfterWrite = null;
+    True(engine.MaintainOwned(true).Success);
+    Equal(333, BinaryPrimitives.ReadInt32LittleEndian(memory.Raw(0x210110, 4)));
+    True(engine.ResetSettings().Success);
+    var writes = memory.WriteCalls;
+    False(engine.MaintainOwned(true).CanMaintainOwned);
+    Equal(writes, memory.WriteCalls);
+});
+
+Test("already-matching FOV FPS and ping retain requests through known game resets", () =>
+{
+    var memory = FakeMemory.Create();
+    memory.SetCurrent(AdvancedDvar.PingText, 1);
+    memory.SetCurrent(AdvancedDvar.PingGraph, 0);
+    using var engine = new ControlEngine(new FakeSource(memory));
+    True(engine.ApplySettings(new(144, 90), none with { NumericPing = true }).CanMaintainOwned);
+    Equal(0, memory.WriteCalls);
+    memory.Put32(0x210010, BitConverter.SingleToInt32Bits(65));
+    memory.Put32(0x210110, 85);
+    memory.SetCurrent(AdvancedDvar.PingText, 0);
+    memory.SetCurrent(AdvancedDvar.PingGraph, 1);
+    True(engine.MaintainOwned(true).Success);
+    Equal(4, memory.WriteCalls);
+    True(engine.ResetSettings().Success);
+    Equal(4, memory.WriteCalls);
+    False(engine.MaintainOwned(true).CanMaintainOwned);
+});
+
+Test("temporary missing dvars recover but process lifetime invalidation stays stopped", () =>
+{
+    var memory = FakeMemory.Create();
+    using var engine = new ControlEngine(new FakeSource(memory));
+    True(engine.ApplySettings(new(333, 95), none).CanMaintainOwned);
+    memory.Put64(memory.Identity.ModuleBase + KnownBuild.FovPointerRva, 0);
+    var unavailable = engine.MaintainOwned(true);
+    False(unavailable.Success);
+    True(unavailable.CanMaintainOwned);
+    memory.Put64(memory.Identity.ModuleBase + KnownBuild.FovPointerRva, 0x210000);
+    memory.Put32(0x210010, BitConverter.SingleToInt32Bits(65));
+    True(engine.MaintainOwned(true).Success);
+    memory.IdentityValid = false;
+    False(engine.MaintainOwned(true).CanMaintainOwned);
+    memory.IdentityValid = true;
+    False(engine.MaintainOwned(true).CanMaintainOwned);
 });
 
 Console.WriteLine($"Results: {passed} passed, {failed} failed, {passed + failed} total (synthetic only)");

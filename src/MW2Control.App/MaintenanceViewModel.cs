@@ -8,14 +8,14 @@ public sealed partial class MainViewModel
     private Task? _maintenanceTask;
     private bool _maintenanceActive;
     public bool MaintenanceActive => _maintenanceActive;
-    public string MaintenanceStatus { get; private set; } = "Inactive. Apply starts retention for settings changed by this app.";
+    public string MaintenanceStatus { get; private set; } = "Choose your settings, then Apply.";
 
     private void StartMaintenance(EngineSnapshot session)
     {
         _maintenanceCancellation?.Dispose();
         _maintenanceCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         _maintenanceActive = true;
-        MaintenanceStatus = "Keeping applied settings active in this game session.";
+        MaintenanceStatus = "Settings are active.";
         _maintenanceTask = MaintainAsync(session, _maintenanceCancellation.Token);
         Refresh();
     }
@@ -33,6 +33,7 @@ public sealed partial class MainViewModel
         await Task.Yield();
         var displayClock = System.Diagnostics.Stopwatch.StartNew();
         var stoppedForError = false;
+        var recovering = false;
         AddActivity("Settings retention started after Apply.");
         try
         {
@@ -50,33 +51,44 @@ public sealed partial class MainViewModel
                 finally { _gate.Release(); }
 
                 var snapshot = result.Snapshot;
-                if (!result.Success || snapshot.State != EngineState.ReadOnlyReady ||
+                if (!result.CanMaintainOwned ||
                     snapshot.ProcessId != session.ProcessId ||
                     !string.Equals(snapshot.GamePath, session.GamePath, StringComparison.OrdinalIgnoreCase) ||
                     !string.Equals(snapshot.Fingerprint, session.Fingerprint, StringComparison.OrdinalIgnoreCase))
                 {
                     _snapshot = snapshot;
-                    MaintenanceStatus = "Stopped: " + result.Message;
-                    LastResult = "Keep applied stopped after a refusal, error or session change. " + result.Message;
+                    MaintenanceStatus = "Settings paused. See Diagnostics.";
+                    LastResult = "Automatic recovery paused. " + result.Message;
                     stoppedForError = true;
                     AddActivity(LastResult);
                     break;
                 }
+                if (!result.Success && !recovering)
+                {
+                    AddActivity("Waiting to restore settings in the same game session. " + result.Message);
+                    LastResult = result.Message;
+                }
+                if (result.Success && recovering)
+                {
+                    AddActivity("Settings recovered automatically in the same game session.");
+                    LastResult = "Settings recovered automatically.";
+                }
+                recovering = !result.Success;
+                MaintenanceStatus = recovering ? "Restoring settings after a game change…" : "Settings are active.";
                 if (displayClock.ElapsedMilliseconds >= 1000)
                 {
                     _snapshot = snapshot;
-                    MaintenanceStatus = "Active. Keeping applied settings in this game session.";
                     Refresh();
                     displayClock.Restart();
                 }
-                await Task.Delay(100, token);
+                await Task.Delay(recovering ? 1000 : 500, token);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception ex)
         {
-            MaintenanceStatus = "Stopped: " + ex.Message;
-            LastResult = "Keep applied stopped after an error: " + ex.Message;
+            MaintenanceStatus = "Settings paused. See Diagnostics.";
+            LastResult = "Automatic recovery paused: " + ex.Message;
             stoppedForError = true;
             AddActivity(LastResult);
         }
@@ -85,7 +97,7 @@ public sealed partial class MainViewModel
             _maintenanceActive = false;
             if (!stoppedForError)
             {
-                MaintenanceStatus = "Inactive.";
+                MaintenanceStatus = "Choose your settings, then Apply.";
                 AddActivity("Settings retention stopped.");
             }
             Refresh();

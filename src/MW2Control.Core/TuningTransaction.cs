@@ -20,6 +20,7 @@ public sealed class TuningTransaction
         public ulong Address { get; } = address;
         public byte[] Bytes { get; } = (byte[])bytes.Clone();
         public byte[]? Owned { get; set; }
+        public byte[]? Target { get; set; }
         public byte[]? MaintenanceMetadata { get; init; }
     }
 
@@ -37,9 +38,9 @@ public sealed class TuningTransaction
         identity = memory.Identity;
     }
 
-    internal bool HasOwnedValues
+    internal bool HasMaintenanceTargets
     {
-        get { lock (gate) return originals.Values.Any(value => value.Owned is not null); }
+        get { lock (gate) return originals.Values.Any(value => value.Target is not null); }
     }
 
     internal bool CanMaintainOwned
@@ -102,7 +103,7 @@ public sealed class TuningTransaction
                 var plans = current.Select(value => new Plan(value.Feature, value.Address, value.RawValue,
                     DvarValidator.Encode(value.Feature, request), Clone(originals[value.Feature].Owned))).ToArray();
                 var result = Execute(plans, restoring: false);
-                maintenanceSeeded = result.Success && HasOwnedValues && originals.Values.Where(original => original.Owned is not null)
+                maintenanceSeeded = result.Success && HasMaintenanceTargets && originals.Values.Where(original => original.Target is not null)
                     .All(original => original.MaintenanceMetadata is not null);
                 return result;
             }
@@ -125,7 +126,8 @@ public sealed class TuningTransaction
                 var plans = new List<Plan>();
                 foreach (var feature in Features)
                 {
-                    if (!originals.TryGetValue(feature, out var original) || original.Owned is null) continue;
+                    if (!originals.TryGetValue(feature, out var original)) continue;
+                    if (original.Owned is null) { originals.Remove(feature); continue; }
                     var value = DvarValidator.Resolve(memory, feature, requireWritable: true);
                     DvarValidator.Require(original.Address == value.Address, "Dvar mapping changed. Originals cannot be restored to a different address.");
                     DvarValidator.Require(value.RawValue.AsSpan().SequenceEqual(original.Owned) ||
@@ -162,13 +164,13 @@ public sealed class TuningTransaction
                 var plans = new List<Plan>();
                 foreach (var feature in Features)
                 {
-                    if (!originals.TryGetValue(feature, out var original) || original.Owned is null) continue;
+                    if (!originals.TryGetValue(feature, out var original) || original.Target is null) continue;
                     var current = DvarValidator.Resolve(memory, feature, requireWritable: true);
                     DvarValidator.Require(current.Address == original.Address, $"{feature}: Keep applied stopped because the dvar mapping changed.");
                     ValidateMaintenanceMetadata(feature, current.Address);
-                    DvarValidator.Require(current.RawValue.AsSpan().SequenceEqual(original.Owned) || current.RawValue.AsSpan().SequenceEqual(original.Bytes),
-                        ConflictDiagnostics.Tuning(feature, current.RawValue, original.Owned, "last owned", "Keep applied"));
-                    plans.Add(new(feature, current.Address, current.RawValue, Clone(original.Owned)!, Clone(original.Owned)));
+                    DvarValidator.Require(current.RawValue.AsSpan().SequenceEqual(original.Target) || IsRecognizedReset(feature, current.RawValue, original),
+                        ConflictDiagnostics.Tuning(feature, current.RawValue, original.Target, "last applied", "Keep applied"));
+                    plans.Add(new(feature, current.Address, current.RawValue, Clone(original.Target)!, Clone(original.Owned)));
                 }
                 if (plans.Count == 0)
                 {
@@ -176,12 +178,11 @@ public sealed class TuningTransaction
                     return new(false, "No owned tuning targets remain; Keep applied stopped.");
                 }
                 var result = Execute(plans, restoring: false, maintaining: true);
-                maintenanceSeeded = result.Success && HasOwnedValues;
+                // A failed tick keeps the last successful targets for a guarded retry.
                 return result with { Message = result.Success ? "Owned tuning targets checked/reapplied; captured originals are unchanged." : "Keep applied stopped. " + result.Message };
             }
             catch (Exception ex) when (IsExpectedFailure(ex))
             {
-                maintenanceSeeded = false;
                 return new(false, "Keep applied stopped before tuning writes: " + ex.Message);
             }
         }
@@ -206,10 +207,11 @@ public sealed class TuningTransaction
             foreach (var plan in plans)
             {
                 var original = originals[plan.Feature];
+                original.Target = restoring ? null : Clone(plan.Desired);
                 original.Owned = restoring || original.Bytes.AsSpan().SequenceEqual(plan.Desired) ? null : Clone(plan.Desired);
-                if (original.Owned is null) originals.Remove(plan.Feature);
+                if (original.Owned is null && original.Target is null) originals.Remove(plan.Feature);
             }
-            return new(true, restoring ? "Original FOV/FPS values restored and read back." : "Requested FOV/FPS values applied and read back. No ongoing writes are scheduled.");
+            return new(true, restoring ? "Original FOV and FPS restored and verified." : "FOV and FPS applied and verified.");
         }
         catch (Exception ex) when (IsExpectedFailure(ex))
         {
@@ -288,7 +290,7 @@ public sealed class TuningTransaction
         if (maintaining) ValidateMaintenanceMetadata(feature, address);
         // The game can restore this exact baseline between the write and readback.
         // Keep the existing target so the next scheduled tick can retry.
-        if (allowBaselineReset && value.RawValue.AsSpan().SequenceEqual(originals[feature].Bytes)) return;
+        if (allowBaselineReset && IsRecognizedReset(feature, value.RawValue, originals[feature])) return;
         DvarValidator.Require(value.RawValue.AsSpan().SequenceEqual(expected),
             ConflictDiagnostics.Tuning(feature, value.RawValue, expected, "expected before write/readback", "Write/readback"));
     }
@@ -322,6 +324,14 @@ public sealed class TuningTransaction
             ReadMaintenanceMetadata(feature, address).AsSpan().SequenceEqual(original.MaintenanceMetadata),
             $"{feature}: Keep applied stopped because captured type/domain metadata changed.");
     }
+
+    // Recognized reset values for the supported Steam build, checked only after
+    // resolving the same dvar and validating its type, domain and writable data page.
+    private static bool IsRecognizedReset(TuningFeature feature, byte[] bytes, Original original) =>
+        bytes.AsSpan().SequenceEqual(original.Bytes) ||
+        (feature == TuningFeature.Fov
+            ? BitConverter.ToSingle(bytes) == 65f
+            : BinaryPrimitives.ReadInt32LittleEndian(bytes) == 85);
 
     private void CheckSession()
     {

@@ -11,6 +11,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = _viewModel;
+        Loaded += (_, _) => _viewModel.StartMonitoring();
         SourceInitialized += (_, _) => EnableDarkTitleBar();
         Closed += async (_, _) =>
         {

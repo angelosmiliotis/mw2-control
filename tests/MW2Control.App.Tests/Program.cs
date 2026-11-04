@@ -1,4 +1,5 @@
 using System.Text;
+using System.IO;
 using System.Windows.Threading;
 using MW2Control.App;
 using MW2Control.Core;
@@ -13,12 +14,95 @@ internal static class Program
         var exit = 0;
         dispatcher.BeginInvoke(new Action(async () =>
         {
-            try { await Smoke(); Console.WriteLine("PASS: synthetic view-model maintenance lifecycle (no windows/native APIs)"); }
+            try
+            {
+                await Smoke();
+                await Preferences();
+                await ConnectionAndRecovery();
+                Console.WriteLine("PASS: synthetic view-model lifecycle, preferences and recovery (no windows/native APIs)");
+            }
             catch (Exception ex) { Console.Error.WriteLine(ex); exit = 1; }
             finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Background); }
         }));
         Dispatcher.Run();
         return exit;
+    }
+
+    private static async Task Preferences()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "MW2Control-" + Guid.NewGuid().ToString("N") + ".json");
+        var store = new PreferencesStore(path);
+        try
+        {
+            var memory = new FakeMemory();
+            var vm = new MainViewModel(new ControlEngine(new FakeSource(memory)), store);
+            Assert(vm.RequestedFov == 90 && vm.RequestedFps == 333, "first launch uses 90 FOV and 333 FPS");
+            vm.RequestedFov = 97;
+            vm.RequestedFps = 240;
+            vm.UncappedFps = true;
+            vm.Music.Requested = vm.Fullbright.Requested = vm.Fog.Requested = true;
+            vm.Glow.Requested = vm.Detail.Requested = vm.Ping.Requested = true;
+            vm.SpecularChoice = 3;
+            await vm.DisposeAsync();
+            var restored = new MainViewModel(new ControlEngine(new FakeSource(memory)), store);
+            Assert(restored.RequestedFov == 97 && restored.RequestedFps == 240 && restored.UncappedFps &&
+                restored.Music.Requested && restored.Fullbright.Requested && restored.Fog.Requested &&
+                restored.Glow.Requested && restored.Detail.Requested && restored.Ping.Requested && restored.SpecularChoice == 3,
+                "all selected preferences survive reopening");
+            Assert(!restored.MaintenanceActive && memory.Writes == 0, "loading preferences does not apply them");
+            await restored.DisposeAsync();
+            File.WriteAllText(path, "{broken json");
+            var fallback = new MainViewModel(new ControlEngine(new FakeSource(memory)), store);
+            Assert(fallback.RequestedFov == 90 && fallback.RequestedFps == 333 && fallback.Activity.Count > 0,
+                "corrupt preferences use defaults and record diagnostics");
+            await fallback.DisposeAsync();
+            File.WriteAllText(path, "{\"Fov\":1000,\"Fps\":-10,\"SpecularChoice\":40}");
+            var normalized = store.Load();
+            Assert(normalized.Fov == 100 && normalized.Fps == 30 && normalized.SpecularChoice == 3,
+                "out-of-range saved preferences are normalized");
+        }
+        finally { File.Delete(path); }
+    }
+
+    private static async Task ConnectionAndRecovery()
+    {
+        var memory = new FakeMemory();
+        var source = new FakeSource(memory);
+        var vm = new MainViewModel(new ControlEngine(source));
+        var visualRows = vm.VisualFeatures;
+        try
+        {
+            vm.StartMonitoring();
+            await Until(() => vm.StateLabel == "CONNECTED");
+            Assert(memory.Writes == 0, "automatic connection detection is read-only");
+            vm.RequestedFov = 95;
+            vm.RequestedFps = 165;
+            vm.ApplyCommand.Execute(null);
+            await Until(() => !vm.Busy && vm.MaintenanceActive);
+            memory.SetFov(70);
+            await Until(() => vm.MaintenanceStatus.Contains("Restoring"));
+            Assert(vm.StateLabel == "CONNECTED", "transient recovery keeps a connected state");
+            var writes = memory.Writes;
+            await Task.Delay(1100);
+            Assert(memory.Writes == writes, "unrecognized values pause writes without losing the applied request");
+            memory.SetFov(65);
+            await Until(() => BitConverter.ToSingle(memory.ReadMemory(0x200010, 4)) == 95);
+            Assert(vm.MaintenanceActive, "recognized game reset automatically restores the last applied FOV");
+            memory.SetFov(70);
+            await Until(() => vm.MaintenanceStatus.Contains("Restoring"));
+            vm.ResetCommand.Execute(null);
+            await Until(() => !vm.Busy && !vm.MaintenanceActive);
+            writes = memory.Writes;
+            memory.SetFov(65);
+            await Task.Delay(1200);
+            Assert(memory.Writes == writes, "Reset cancels pending recovery even when restoring originals is refused");
+            source.Running = false;
+            memory.IdentityValid = false;
+            await Until(() => vm.StateLabel == "GAME NOT RUNNING");
+            Assert(memory.Writes == writes, "automatic monitoring detects game exit without writes");
+            Assert(ReferenceEquals(visualRows, vm.VisualFeatures), "periodic updates preserve the settings controls' item collection");
+        }
+        finally { await vm.DisposeAsync(); }
     }
 
     private static async Task Smoke()
@@ -94,7 +178,8 @@ internal static class Program
 
 internal sealed class FakeSource(FakeMemory memory) : IProcessSource
 {
-    public IProcessMemory OpenTarget() => memory;
+    public bool Running { get; set; } = true;
+    public IProcessMemory? OpenTarget() => Running ? memory : null;
 }
 
 internal sealed class FakeMemory : IProcessMemory
@@ -140,7 +225,9 @@ internal sealed class FakeMemory : IProcessMemory
     {
         lock (_gate) for (var i = 0; i < data.Length; i++) _bytes[address + (ulong)i] = data[i];
     }
-    public bool ValidateIdentity() => true;
+    public bool IdentityValid { get; set; } = true;
+    public void SetFov(float value) => Put(0x200010, BitConverter.GetBytes(value));
+    public bool ValidateIdentity() => IdentityValid;
     public MemoryRegion QueryRegion(ulong address) => address switch
     {
         >= 0x200000 and < 0x200280 => new(0x200000, 0x280, true, MemoryProtection.ReadWrite),

@@ -1,12 +1,12 @@
 name: Bug report
-description: Report a crash, incorrect behavior, or compatibility problem.
+description: Something crashed or did not work as expected.
 labels: [bug]
 body:
   - type: input
     id: version
     attributes:
       label: MW2 Control version
-      placeholder: v0.4.3
+      placeholder: "1.0"
     validations:
       required: true
   - type: textarea

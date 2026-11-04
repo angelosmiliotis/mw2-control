@@ -169,11 +169,11 @@
       <Border BorderBrush="#303326" BorderThickness="0,0,1,0" Background="#1B1E15">
        <DockPanel>
         <StackPanel DockPanel.Dock="Bottom" Margin="25,20,20,24">
-         <TextBlock Text="LOCAL. DELIBERATE." FontSize="10" Foreground="{StaticResource MutedBrush}" />
-         <TextBlock Text="Release candidate 0.4.3" FontSize="11" Foreground="#918F7A" Margin="0,6,0,0" />
+         <TextBlock Text="MW2 (2009) · Steam" FontSize="10" Foreground="{StaticResource MutedBrush}" />
+         <TextBlock Text="{Binding AppVersion}" FontSize="11" Foreground="#918F7A" Margin="0,6,0,0" />
         </StackPanel>
         <StackPanel>
-         <TextBlock Text="WORKSPACE" Style="{StaticResource Eyebrow}" Margin="30,28,0,17" />
+         <TextBlock Text="MW2 CONTROL" Style="{StaticResource Eyebrow}" Margin="30,28,0,17" />
          <TabPanel IsItemsHost="True" KeyboardNavigation.TabIndex="1" />
         </StackPanel>
        </DockPanel>

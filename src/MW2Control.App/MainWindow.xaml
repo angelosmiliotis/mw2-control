@@ -4,7 +4,7 @@
  xmlns:local="clr-namespace:MW2Control.App"
  Style="{StaticResource {x:Type Window}}"
  Icon="Assets/MW2Control.ico"
- Title="MW2 Control · Precision companion" Width="1180" Height="820" MinWidth="980" MinHeight="700"
+ Title="MW2 Control" Width="1180" Height="820" MinWidth="980" MinHeight="700"
  WindowStartupLocation="CenterScreen" UseLayoutRounding="True">
  <Window.Resources>
   <Style x:Key="CompactCard" TargetType="Border" BasedOn="{StaticResource Card}">
@@ -12,8 +12,7 @@
   </Style>
   <DataTemplate x:Key="AdvancedFeatureTemplate">
    <Border Style="{StaticResource CompactCard}" Margin="0,0,8,8">
-    <CheckBox Content="{Binding Label}" IsChecked="{Binding Requested}" IsEnabled="{Binding Editable}"
-              ToolTip="{Binding Reading}" />
+    <CheckBox Content="{Binding Label}" IsChecked="{Binding Requested}" IsEnabled="{Binding Editable}" />
    </Border>
   </DataTemplate>
  </Window.Resources>
@@ -24,7 +23,7 @@
     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
     <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
      <Border Background="{StaticResource AccentBrush}" CornerRadius="3" Width="6" Height="31" Margin="0,0,14,0" />
-     <StackPanel><TextBlock Text="MW2 CONTROL" FontSize="20" FontWeight="Bold" /><TextBlock Text="P R E C I S I O N   C O M P A N I O N" FontSize="9" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,0" /></StackPanel>
+     <StackPanel><TextBlock Text="MW2 CONTROL" FontSize="20" FontWeight="Bold" /><TextBlock Text="Modern Warfare 2 (2009)" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,0" /></StackPanel>
     </StackPanel>
     <Border Grid.Column="1" VerticalAlignment="Center" Background="#2E321F" BorderBrush="#52583A" BorderThickness="1" CornerRadius="5" Padding="11,7" Margin="14,0">
      <TextBlock Text="{Binding StateLabel}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" />
@@ -32,7 +31,7 @@
    </Grid>
   </Border>
   <TabControl Grid.Row="1" TabStripPlacement="Left" SelectedIndex="0" AutomationProperties.Name="Workspace navigation">
-   <TabItem Header="01   Settings" AutomationProperties.Name="Settings">
+   <TabItem Header="Settings" AutomationProperties.Name="Settings">
     <Grid>
      <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
      <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -43,7 +42,6 @@
          <StackPanel>
           <TextBlock Text="FIELD OF VIEW" Style="{StaticResource Eyebrow}" />
           <DockPanel Margin="0,4">
-           <TextBlock DockPanel.Dock="Right" Text="{Binding ObservedFov, StringFormat=Observed {0}°}" Style="{StaticResource Muted}" VerticalAlignment="Center" />
            <TextBlock Text="{Binding RequestedFov, StringFormat={}{0:0}°}" FontSize="24" Foreground="{StaticResource AccentBrush}" />
           </DockPanel>
           <Slider Minimum="65" Maximum="100" Value="{Binding RequestedFov}" IsEnabled="{Binding InputsEnabled}"
@@ -54,7 +52,6 @@
          <StackPanel>
           <TextBlock Text="FRAME CAP" Style="{StaticResource Eyebrow}" />
           <DockPanel Margin="0,4">
-           <TextBlock DockPanel.Dock="Right" Text="{Binding ObservedFps, StringFormat=Observed {0}}" Style="{StaticResource Muted}" VerticalAlignment="Center" />
            <TextBlock Text="{Binding RequestedFpsDisplay}" FontSize="24" Foreground="{StaticResource AccentBrush}" />
           </DockPanel>
           <Slider Minimum="30" Maximum="500" Value="{Binding RequestedFps}" IsEnabled="{Binding FpsSliderEnabled}" AutomationProperties.Name="Requested FPS cap" />
@@ -70,7 +67,7 @@
         <DockPanel>
          <TextBlock Text="Specular mode" VerticalAlignment="Center" Margin="0,0,14,0" />
          <ComboBox ItemsSource="{Binding SpecularChoices}" SelectedIndex="{Binding SpecularChoice}"
-                   IsEnabled="{Binding SpecularEditable}" ToolTip="{Binding SpecularReading}" Padding="7,4" AutomationProperties.Name="Specular mode" />
+                   IsEnabled="{Binding SpecularEditable}" Padding="7,4" AutomationProperties.Name="Specular mode" />
         </DockPanel>
        </Border>
        <TextBlock Text="AUDIO &amp; SCOREBOARD" Style="{StaticResource Eyebrow}" Margin="0,0,0,6" />
@@ -84,24 +81,23 @@
        <DockPanel LastChildFill="True">
         <WrapPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="16,0,0,0">
          <Button Content="_Apply" Command="{Binding ApplyCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,10,0" />
-         <Button Content="_Reset" Command="{Binding ResetCommand}" ToolTip="Stop retaining settings and restore captured originals" />
+         <Button Content="_Reset" Command="{Binding ResetCommand}" ToolTip="Restore original settings and stop automatic recovery" />
         </WrapPanel>
         <StackPanel VerticalAlignment="Center">
          <TextBlock Text="{Binding MaintenanceStatus}" FontWeight="SemiBold" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding MaintenanceStatus}" />
-         <TextBlock Text="{Binding LastResult}" Style="{StaticResource Muted}" FontSize="12" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding LastResult}" AutomationProperties.LiveSetting="Polite" />
         </StackPanel>
        </DockPanel>
       </Border>
      </Grid>
    </TabItem>
-   <TabItem Header="02   Diagnostics" AutomationProperties.Name="Diagnostics">
+   <TabItem Header="Diagnostics" AutomationProperties.Name="Diagnostics">
     <ScrollViewer><StackPanel Margin="32,27,32,32">
-     <TextBlock Text="INSPECTION / EVIDENCE" Style="{StaticResource Eyebrow}" />
+     <TextBlock Text="GAME DETAILS" Style="{StaticResource Eyebrow}" />
      <TextBlock Text="Diagnostics" Style="{StaticResource PageTitle}" />
      <Button Content="_Scan session" Command="{Binding ScanCommand}" HorizontalAlignment="Left" Margin="0,0,0,12" ToolTip="Scan for supported settings while retention is inactive" />
-     <TextBlock Text="A snapshot from the last manual operation. Values are not continuously monitored." Style="{StaticResource Muted}" Margin="0,0,0,26" />
+     <TextBlock Text="Current session readings and details from Apply, Reset and automatic recovery." Style="{StaticResource Muted}" Margin="0,0,0,26" />
      <Border Style="{StaticResource Card}" Margin="0,0,0,20"><StackPanel>
-      <TextBlock Text="PROCESS IDENTITY" Style="{StaticResource Eyebrow}" />
+      <TextBlock Text="GAME" Style="{StaticResource Eyebrow}" />
       <Grid Margin="0,16,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
        <StackPanel><TextBlock Text="Executable" Style="{StaticResource Muted}" FontSize="12" /><TextBlock Text="{Binding ProcessName}" FontSize="20" Margin="0,4,0,0" /></StackPanel>
        <StackPanel Grid.Column="1"><TextBlock Text="Process ID" Style="{StaticResource Muted}" FontSize="12" /><TextBlock Text="{Binding ProcessId}" FontSize="20" Margin="0,4,0,0" /></StackPanel>
@@ -112,7 +108,7 @@
       </StackPanel></Expander>
      </StackPanel></Border>
      <Border Style="{StaticResource Card}" Margin="0,0,0,20"><StackPanel>
-      <TextBlock Text="FEATURE READINGS" Style="{StaticResource Eyebrow}" />
+      <TextBlock Text="CURRENT SETTINGS" Style="{StaticResource Eyebrow}" />
       <TextBlock Text="Readings appear after inspection. A dash means no validated value is available." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,12" />
       <ItemsControl ItemsSource="{Binding Features}"><ItemsControl.ItemTemplate><DataTemplate>
        <Border BorderBrush="#3D4030" BorderThickness="0,1,0,0" Padding="0,14"><StackPanel>
@@ -122,13 +118,13 @@
       </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
      </StackPanel></Border>
      <Border Style="{StaticResource Card}"><StackPanel>
-      <TextBlock Text="SESSION ACTIVITY" Style="{StaticResource Eyebrow}" />
+      <TextBlock Text="RECENT ACTIVITY" Style="{StaticResource Eyebrow}" />
       <TextBlock Text="Local to this window · latest 30 operations" Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,12" />
       <ItemsControl ItemsSource="{Binding Activity}"><ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,0,0,12" LineHeight="20" /></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
      </StackPanel></Border>
     </StackPanel></ScrollViewer>
    </TabItem>
-   <TabItem Header="03   Lobby Network" AutomationProperties.Name="Lobby Network">
+   <TabItem Header="Lobby Network" AutomationProperties.Name="Lobby Network">
     <local:LobbyNetworkView x:Name="NetworkView" />
    </TabItem>
   </TabControl>

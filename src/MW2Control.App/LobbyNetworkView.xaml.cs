@@ -22,9 +22,12 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
     public IReadOnlyList<FirewallBlock> Blocks { get; private set; } = Array.Empty<FirewallBlock>();
     public CaptureAdapter? SelectedAdapter { get => _selectedAdapter; set { _selectedAdapter = value; Changed(); } }
     public PeerSnapshot? LikelyHost => Peers.SingleOrDefault(p => p.IsTrafficLeader);
-    public string HostSummary => LikelyHost is { } peer
-        ? $"Likely host: {peer.Address} · {peer.BytesPerSecond:N0} B/s"
-        : Capturing ? "Waiting for lobby traffic…" : "Scan a lobby to see its traffic leader.";
+    public string HostAddress => LikelyHost?.Address ?? "—";
+    public string ScanButtonLabel => Capturing ? "Stop scan" : "Scan lobby";
+    public string BlocksSummary => Blocks.Count == 0 ? "No blocked addresses." : $"{Blocks.Count} blocked";
+    public string ScanSummary => Capturing
+        ? LikelyHost is null ? "Waiting for lobby traffic…" : $"{Peers.Count} connections observed"
+        : Status.StartsWith("Stopped.", StringComparison.Ordinal) ? "Scan stopped." : Status;
     public FirewallBlock? SelectedBlock { get => _selectedBlock; set { _selectedBlock = value; Changed(); } }
     public bool Capturing { get; private set; }
     public bool Idle => !_busy && !_closed;
@@ -34,12 +37,14 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
     public bool CanUnblock => Idle && SelectedBlock is not null;
     public string Status { get; private set; } = "Join a lobby, then select Scan lobby.";
     public string GamePath { get; private set; } = string.Empty;
-    public string ActionResult { get; private set; } = "No firewall changes requested.";
+    public string ActionResult { get; private set; } = string.Empty;
+    public string ActionDetails { get; private set; } = string.Empty;
 
     public LobbyNetworkView()
     {
         InitializeComponent();
         DataContext = this;
+        Loaded += async (_, _) => await Run(LoadBlocks);
         _timer.Tick += async (_, _) => await Run(async () => Accept(await Task.Run(_capture.Snapshot)), reportErrors: true);
     }
 
@@ -60,7 +65,11 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
         try { await operation(); }
         catch (Exception ex)
         {
-            if (reportErrors) Status = "Network operation failed: " + ex.Message;
+            if (reportErrors)
+            {
+                Status = "Network operation failed: " + ex.Message;
+                ActionResult = Status;
+            }
             // Stop polling after a backend error; the user can explicitly retry.
             _timer.Stop();
         }
@@ -74,6 +83,12 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
         _selectedAdapter = Adapters.FirstOrDefault(a => a.Id == SelectedAdapter?.Id);
         Status = Adapters.Count == 0 ? "No capture adapters available. Check Npcap installation and permissions." : "Choose an adapter before starting capture.";
     });
+    private void ToggleCapture(object sender, RoutedEventArgs e)
+    {
+        if (Capturing) StopCapture(sender, e);
+        else StartCapture(sender, e);
+    }
+
     private async void StartCapture(object sender, RoutedEventArgs e)
     {
         if (!CanStart) return;
@@ -92,10 +107,10 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
             {
                 _selectedAdapter = null;
                 Status = Adapters.Count == 0 ? "No Npcap adapters available." :
-                    "The game adapter is ambiguous. Open Capture adapter, choose the game’s network interface, then scan again.";
+                    "The game adapter is ambiguous. Open Network options, choose the game's network interface, then scan again.";
                 return;
             }
-            _selectedAdapter = selection.Adapters.FirstOrDefault(a => a.Id == selectedId);
+            _selectedAdapter = adapter;
             var result = await Task.Run(() => _capture.Start(adapter.Id));
             Accept(await Task.Run(_capture.Snapshot));
             Status = result.Message;
@@ -131,8 +146,9 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
     private async void RefreshBlocks(object sender, RoutedEventArgs e) => await Run(LoadBlocks);
     private async Task LoadBlocks()
     {
+        var selectedId = _selectedBlock?.Id;
         Blocks = await Task.Run(_firewall.ListOwnedBlocks);
-        _selectedBlock = null;
+        _selectedBlock = Blocks.FirstOrDefault(block => block.Id == selectedId) ?? Blocks.FirstOrDefault();
     }
 
     private async void BlockPeer(object sender, RoutedEventArgs e)
@@ -145,8 +161,8 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
             var peer = LikelyHost;
             var path = GamePath;
             if (_closed || !Capturing || peer is null || string.IsNullOrWhiteSpace(path)) return;
-            if (!Confirm("Block exact IP?", peer.Address, path,
-                "Create inbound and outbound UDP block rules for this executable. This may disconnect your session and affect other lobbies using this IP or relay. The traffic leader is an UNVERIFIED host; IP changes are possible.")) return;
+            if (!Confirm("Block exact IP?", peer.Address,
+                "Block this IP for MW2? You may disconnect from the lobby. Other lobbies sharing this IP or relay may also be blocked. The host is an estimate.")) return;
             var latest = await Task.Run(_capture.Snapshot);
             Accept(latest);
             if (_closed || !Capturing || latest.ProcessId != snapshot.ProcessId || GamePath != path || LikelyHost?.Address != peer.Address)
@@ -155,7 +171,8 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
                 return;
             }
             var result = await Task.Run(() => _firewall.Block(peer.Address, path, true));
-            ActionResult = (result.Success ? "Block: " : "Block declined / failed: ") + result.Message;
+            ActionDetails = result.Message;
+            ActionResult = result.Success ? $"Blocked {peer.Address} for MW2." : FriendlyFailure(result.Message);
             await LoadBlocks();
         });
     }
@@ -165,15 +182,22 @@ public partial class LobbyNetworkView : UserControl, INotifyPropertyChanged
         if (!CanUnblock || block is null) return;
         await Run(async () =>
         {
-            if (!Confirm("Remove owned block?", block.Address, block.GamePath,
-                "Remove only this application's validated firewall block for the exact IP and executable below.")) return;
+            if (!Confirm("Unblock this address?", block.Address,
+                "Remove this MW2 Control block and allow connections to this address again?")) return;
             var result = await Task.Run(() => _firewall.Unblock(block.Id, true));
-            ActionResult = (result.Success ? "Unblock: " : "Unblock declined / failed: ") + result.Message;
+            ActionDetails = result.Message;
+            ActionResult = result.Success ? $"Unblocked {block.Address}." : FriendlyFailure(result.Message);
             await LoadBlocks();
         });
     }
-    private bool Confirm(string title, string address, string path, string warning) =>
-        MessageBox.Show(Window.GetWindow(this), $"Remote IP: {address}\n\nExecutable: {path}\n\n{warning}\n\nAdministrator permissions may be required. Continue?",
+    private static string FriendlyFailure(string message) =>
+        message.Contains("0x80070005", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("Access is denied", StringComparison.OrdinalIgnoreCase)
+            ? "Open MW2 Control as administrator to block or unblock an address."
+            : "The firewall change failed. Open Network options for details.";
+
+    private bool Confirm(string title, string address, string warning) =>
+        MessageBox.Show(Window.GetWindow(this), $"IP address: {address}\n\n{warning}\n\nContinue?",
             title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
 
     public async Task DisposeAsync()

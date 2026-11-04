@@ -1,19 +1,29 @@
-# Lobby Network implementation handoff
+# Lobby Network
 
-The Stage 2 public UI contract is implemented in `MW2Control.Network` with no Core reference or packages. Constructors do not load Npcap or activate firewall COM. Adapter enumeration loads the installed library on demand; only explicit `Start` opens capture. Adapter/list/firewall-list failures throw actionable exceptions for the UI to display; action methods return `NetworkResult`.
+This module reads game-owned UDP endpoints, captures recent IPv4 traffic through Npcap and manages firewall blocks created by MW2 Control.
 
-Capture uses only IPv4 UDP with Ethernet (up to two VLAN tags), Windows loopback, DLT_LOOP, RAW and IPv4 link types. IPv6 capture and fragments are excluded. Windows pcap header layout uses 32-bit seconds/useconds (16 bytes total). Npcap is loaded by absolute System32/Npcap path with DLL-load-directory and System32 dependency flags; no installer, bundled DLL, driver control, injection or packet transmission is present. A nonblocking reader owns and closes its handle; Stop cancels and joins before releasing cancellation resources. Game PID/start time/path and UDP port ownership refresh once per second. Ambiguous shared ports are excluded; target/session loss stops capture and clears peers. Endpoint changes update the filter and clear peers.
+Capture begins when the user starts a scan. The reader closes its own capture handle when stopped. The game's process, start time, path and UDP ports are checked once per second. Endpoint changes update the filter and clear the previous sample.
 
-Packet bytes are inspected through a temporary native span; no payload copies, packet buffers, dumps, remote lookups or traffic transmission are stored/used. Stored data consists of IP header metadata and bounded samples. Peers expire after 15 seconds even without new traffic. Sent/received totals and rate describe the rolling 15-second window, not session totals. A limit of 256 peers and 4096 metadata samples per peer means intense traffic can be undercounted. The top observed traffic peer is a heuristic, not a proven host/player. Relays can prevent attribution.
+## Traffic
 
-Firewall operations require explicit confirmation and a real absolute local `iw4mp.exe` path. New blocks accept canonical exact public unicast IPv4/IPv6 addresses, conservatively excluding special/private addresses and current local interfaces/gateways. Public IPv4 hosts ending in `.0` or `.255` are accepted; their final octet alone does not establish a remote subnet boundary. Listing/removal validates persisted ownership and scope independently of current local addresses, allowing removal after network changes. COM creates paired inbound/outbound UDP BLOCK rules scoped to that executable. The deterministic prefix/group and every scope field are validated before listing/removing. Duplicates/conflicts fail closed. Partial-add failure rolls back only entries absent before this operation; an incomplete rollback is reported. Existing rules are preserved. No profiles, firewall defaults or elevation are changed. External administration racing these checks cannot be made atomic by the COM API. Unblock may partially succeed if permission is revoked mid-operation; its result directs the user to inspect remaining rules.
+The parser supports Ethernet with up to two VLAN tags, Windows loopback, DLT_LOOP, RAW and IPv4 link types. IPv6 capture and fragmented packets are excluded.
 
-Synthetic verification command (from project root):
+The app keeps a rolling 15-second window, capped at 256 peers and 4096 metadata samples per peer. Rates can be undercounted during heavy traffic. Packet payloads are read temporarily for parsing and are not retained.
+
+The busiest connection is used as a likely-host estimate. Shared relays can hide the actual host.
+
+## Firewall rules
+
+Each block has inbound and outbound UDP rules for an exact public IP and `iw4mp.exe`. Rule names, group and scope are checked before listing or removing a block. Duplicate or conflicting rules are rejected. Partial creation failures roll back newly added rules where possible.
+
+Administrator access is required to add or remove rules. Existing unrelated rules and global firewall settings are preserved.
+
+## Tests
 
 ```powershell
-dotnet run --project tests/MW2Control.Network.Tests/MW2Control.Network.Tests.csproj
+dotnet run --project tests/MW2Control.Network.Tests/MW2Control.Network.Tests.csproj -c Release
 ```
 
-Actual result: **27 passed, 0 failed**. Network project build: **0 warnings, 0 errors**. Tests cover parser lengths/link types/fragments, endpoint direction/filtering, rolling pruning/state bounds, explicit capture lifecycle, endpoint refresh/session exit, confirmation/address/path validation, public final-octet acceptance, owned-rule removal after network changes, scoped/idempotent rules, ownership conflicts, partial failure and rollback. Tests instantiate only fake capture, source and firewall boundaries. No real capture, process inspection, firewall COM enumeration or firewall mutation was performed; final installed-Npcap/COM behavior requires the user's live test.
+The 27 cases cover parsing, filtering, rolling counters, capture lifecycle, session changes, address validation and firewall-rule handling. They use test adapters. Npcap access and real firewall behavior need checking on the target Windows setup.
 
-Primary references consulted: [Npcap development/loading](https://npcap.com/guide/npcap-devguide.html), [pcap_next_ex lifetime and link types](https://npcap.com/guide/wpcap/pcap_next_ex.html), [UDP owner-PID row layout](https://learn.microsoft.com/en-us/windows/win32/api/udpmib/ns-udpmib-mib_udprow_owner_pid), [Windows Firewall rule properties](https://learn.microsoft.com/en-us/windows/win32/api/netfw/nn-netfw-inetfwrule). Implementation is original.
+References used for the implementation include the [Npcap developer guide](https://npcap.com/guide/npcap-devguide.html), [pcap_next_ex](https://npcap.com/guide/wpcap/pcap_next_ex.html), the [Windows UDP owner table](https://learn.microsoft.com/en-us/windows/win32/api/udpmib/ns-udpmib-mib_udprow_owner_pid) and [Windows Firewall rule API](https://learn.microsoft.com/en-us/windows/win32/api/netfw/nn-netfw-inetfwrule).

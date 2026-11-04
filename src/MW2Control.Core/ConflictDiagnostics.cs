@@ -30,7 +30,7 @@ internal static class ConflictDiagnostics
         $"{feature}: observed {observed}; {expectedDescription} {expected}. " +
         (operation is null ? "Read-only inspection detected a value change. " : $"{operation} refused to overwrite the changed value. ") +
         "The game itself may reset values during respawn, map load or settings changes; another writer can also change them. " +
-        "No automatic overwrite is performed. " +
+        "Automatic recovery waits for validated targets or recognized reset values in the same session. " +
         (explicitRetryAllowed
             ? "Current bytes exactly match the captured original. Apply or Keep applied may reapply. Restore can clear ownership without writing this value. "
             : "If the conflict persists, restart the game and Apply in the new session. ") +

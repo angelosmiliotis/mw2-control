@@ -23,6 +23,9 @@ public sealed class ControlEngine : IDisposable
             if (disposed) return Empty(EngineState.Error, "The engine is disposed.");
             try
             {
+                if (memory is not null && memory.ValidateIdentity())
+                    return TuningValidation.ValidateProfile(memory.Identity).Success ? Snapshot() :
+                        ForIdentity(EngineState.UnsupportedBuild, "This game build is not supported.", UnsupportedFeatures("Unsupported build."));
                 var unavailable = Acquire();
                 return unavailable ?? Snapshot();
             }
@@ -114,7 +117,7 @@ public sealed class ControlEngine : IDisposable
     /// <summary>
     /// One opt-in maintenance tick over the held session. Does not discover/reopen
     /// a target, hash the executable, schedule work, or seed new originals/targets.
-    /// The caller must stop scheduling on failure, revoked confirmation or manual actions.
+    /// CanMaintainOwned permits another guarded tick in the same session after transient failure.
     /// </summary>
     public OperationResult MaintainOwned(bool privateSessionConfirmed)
     {
@@ -129,8 +132,8 @@ public sealed class ControlEngine : IDisposable
             if (maintenanceFaulted) return MaintenanceResult(false, "Keep applied remains stopped after a guard/error. Manually Apply again before enabling it.");
             if (memory is null || transaction is null || advancedTransaction is null)
                 return MaintenanceResult(false, "Keep applied needs an existing inspected session and a successful manual Apply first. No target was opened.");
-            var tuningOwned = transaction.HasOwnedValues;
-            var advancedOwned = advancedTransaction.HasOwnedValues;
+            var tuningOwned = transaction.HasMaintenanceTargets;
+            var advancedOwned = advancedTransaction.HasMaintenanceTargets;
             if (!tuningOwned && !advancedOwned)
                 return MaintenanceResult(false, "Keep applied has no owned targets. Apply manually first; no writes performed.");
             try
@@ -145,7 +148,6 @@ public sealed class ControlEngine : IDisposable
                     var result = transaction.ReapplyOwned();
                     if (!result.Success)
                     {
-                        maintenanceFaulted = true;
                         return MaintenanceResult(false, result.Message + " Advanced targets were not written. Keep applied groups are not a cross-group atomic transaction.");
                     }
                 }
@@ -154,7 +156,6 @@ public sealed class ControlEngine : IDisposable
                     var result = advancedTransaction.ReapplyOwned();
                     if (!result.Success)
                     {
-                        maintenanceFaulted = true;
                         return MaintenanceResult(false, result.Message +
                             (tuningOwned ? " Tuning may already have been reapplied; groups are not a cross-group atomic transaction." : ""));
                     }
@@ -175,10 +176,17 @@ public sealed class ControlEngine : IDisposable
         try { snapshot = memory is null ? Empty(EngineState.Error, message) : Snapshot(); }
         catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex))
         {
-            maintenanceFaulted = true;
-            return new(false, message + " Keep applied stopped during read-only verification: " + ex.Message, Failure(ex));
+            return new(false, message + " Read-only verification is temporarily unavailable: " + ex.Message, Failure(ex))
+            {
+                CanMaintainOwned = !maintenanceFaulted && memory is not null &&
+                    transaction is not null && advancedTransaction is not null && HasMaintainableTargets()
+            };
         }
-        return new(success, message, snapshot);
+        return new(success, message, snapshot)
+        {
+            CanMaintainOwned = !maintenanceFaulted && memory is not null &&
+                transaction is not null && advancedTransaction is not null && HasMaintainableTargets()
+        };
     }
 
     /// <summary>Explicit read-only reset: forget every restore ledger, release handles, and reinspect.</summary>
@@ -209,8 +217,8 @@ public sealed class ControlEngine : IDisposable
             return new(false, "Restore refused: the values belong to a previous process lifetime or module. No writes performed.");
         var result = operation();
         if (result.Success && !restoring) maintenanceFaulted = false;
-        if (advanced) lastAdvancedWriteSession = advancedTransaction!.HasOwnedValues ? memory!.Identity : null;
-        else lastWriteSession = transaction!.HasOwnedValues ? memory!.Identity : null;
+        if (advanced) lastAdvancedWriteSession = advancedTransaction!.HasMaintenanceTargets ? memory!.Identity : null;
+        else lastWriteSession = transaction!.HasMaintenanceTargets ? memory!.Identity : null;
         return result;
     }
 
@@ -240,8 +248,8 @@ public sealed class ControlEngine : IDisposable
 
     private bool HasMaintainableTargets()
     {
-        var tuningOwned = transaction!.HasOwnedValues;
-        var advancedOwned = advancedTransaction!.HasOwnedValues;
+        var tuningOwned = transaction!.HasMaintenanceTargets;
+        var advancedOwned = advancedTransaction!.HasMaintenanceTargets;
         return (tuningOwned || advancedOwned) &&
             (!tuningOwned || lastWriteSession == memory!.Identity && transaction.CanMaintainOwned) &&
             (!advancedOwned || lastAdvancedWriteSession == memory!.Identity && advancedTransaction.CanMaintainOwned);
@@ -274,7 +282,7 @@ public sealed class ControlEngine : IDisposable
     }
 
     private EngineSnapshot Snapshot() => ForIdentity(EngineState.ReadOnlyReady,
-        "Known build inspected. Read-only by default; all writes require an explicit private/offline action. Optional features are validated independently. Anti-cheat safety is not guaranteed.",
+        "Supported game build detected. Optional settings are validated independently. Apply starts settings retention for this game process.",
         transaction!.InspectFeatures().Concat(advancedTransaction!.InspectFeatures()).ToArray());
 
     private EngineSnapshot ForIdentity(EngineState state, string detail, IReadOnlyList<FeatureReading> features)

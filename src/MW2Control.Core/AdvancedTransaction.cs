@@ -26,6 +26,7 @@ public sealed class AdvancedTransaction
         public ulong Address { get; } = address;
         public byte[] Bytes { get; } = (byte[])bytes.Clone();
         public byte[]? Owned { get; set; }
+        public byte[]? Target { get; set; }
     }
     private sealed record Plan(AdvancedDvar Feature, ulong Address, byte[] Before, byte[] Desired, byte[]? PreviousOwned, bool Restore);
     private sealed class Attempt(Plan plan)
@@ -41,9 +42,9 @@ public sealed class AdvancedTransaction
         identity = memory.Identity;
     }
 
-    internal bool HasOwnedValues
+    internal bool HasMaintenanceTargets
     {
-        get { lock (gate) return originals.Values.Any(original => original.Owned is not null); }
+        get { lock (gate) return originals.Values.Any(value => value.Target is not null); }
     }
 
     internal bool CanMaintainOwned
@@ -59,7 +60,7 @@ public sealed class AdvancedTransaction
             return
             [
                 ReadFeature("music", "Mute streamed sounds", [AdvancedDvar.StreamEnabled], values => values[0].Value == 0 ? 1 : 0,
-                    "Music and some streamed audio only; ambient and S&D filtering is unsupported. No snd_restart is executed."),
+                    "Disables streamed audio. In a live multiplayer test, footsteps, gunfire, explosions, and the bomb timer remained audible."),
                 ReadFeature("fullbright", "Fullbright", [AdvancedDvar.Fullbright], values => values[0].Value,
                     "Changes the validated fullbright data value; visual effect may require a map/session transition."),
                 ReadFeature("fog", "No fog", [AdvancedDvar.Fog], values => values[0].Value == 0 ? 1 : 0,
@@ -127,7 +128,7 @@ public sealed class AdvancedTransaction
                     (AdvancedDvar.PingGraph, settings.NumericPing ? 0 : null)
                 };
                 var result = PrepareAndExecute(requested);
-                maintenanceSeeded = result.Success && HasOwnedValues;
+                maintenanceSeeded = result.Success && HasMaintenanceTargets;
                 return result;
             }
             catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex))
@@ -170,12 +171,12 @@ public sealed class AdvancedTransaction
                 var plans = new List<Plan>();
                 foreach (var feature in Enum.GetValues<AdvancedDvar>())
                 {
-                    if (!originals.TryGetValue(feature, out var original) || original.Owned is null) continue;
+                    if (!originals.TryGetValue(feature, out var original) || original.Target is null) continue;
                     var current = AdvancedDvarValidator.Resolve(memory, feature, requireWritable: true);
                     DvarValidator.Require(current.Address == original.Address, $"{feature}: Keep applied stopped because the dvar mapping changed.");
-                    DvarValidator.Require(current.RawValue.AsSpan().SequenceEqual(original.Owned) || current.RawValue.AsSpan().SequenceEqual(original.Bytes),
-                        ConflictDiagnostics.Advanced(feature, current.RawValue, original.Owned, "last owned", "Keep applied"));
-                    plans.Add(new(feature, current.Address, current.RawValue, Clone(original.Owned)!, Clone(original.Owned), Restore: false));
+                    DvarValidator.Require(current.RawValue.AsSpan().SequenceEqual(original.Target) || IsRecognizedReset(feature, current.RawValue, original),
+                        ConflictDiagnostics.Advanced(feature, current.RawValue, original.Target, "last applied", "Keep applied"));
+                    plans.Add(new(feature, current.Address, current.RawValue, Clone(original.Target)!, Clone(original.Owned), Restore: false));
                 }
                 if (plans.Count == 0)
                 {
@@ -183,12 +184,11 @@ public sealed class AdvancedTransaction
                     return new(false, "No owned advanced targets remain; Keep applied stopped.");
                 }
                 var result = Execute(plans, maintaining: true);
-                maintenanceSeeded = result.Success && HasOwnedValues;
+                // Keep successful targets while a transition temporarily prevents a tick.
                 return result with { Message = result.Success ? "Owned advanced targets checked/reapplied; captured originals are unchanged." : "Keep applied stopped. " + result.Message };
             }
             catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex))
             {
-                maintenanceSeeded = false;
                 return new(false, "Keep applied stopped before advanced writes: " + ex.Message);
             }
         }
@@ -203,7 +203,7 @@ public sealed class AdvancedTransaction
             originals.TryGetValue(feature, out var original);
             // False/null is a restore, never a guessed enable/default write. Missing
             // unsupported features with no owned writes are deliberately not resolved.
-            if (target is null && original?.Owned is null) continue;
+            if (target is null && original?.Owned is null) { originals.Remove(feature); continue; }
             var value = AdvancedDvarValidator.Resolve(memory, feature, requireWritable: true);
             if (original?.Owned is not null)
             {
@@ -249,11 +249,12 @@ public sealed class AdvancedTransaction
             foreach (var plan in plans)
             {
                 var original = originals[plan.Feature];
+                original.Target = plan.Restore ? null : Clone(plan.Desired);
                 original.Owned = plan.Restore || original.Bytes.AsSpan().SequenceEqual(plan.Desired)
                     ? null : Clone(plan.Desired);
-                if (original.Owned is null) originals.Remove(plan.Feature);
+                if (original.Owned is null && original.Target is null) originals.Remove(plan.Feature);
             }
-            return new(true, "Requested advanced changes/restores completed with checked readback. Only current value fields were written; effects have not been live-tested.");
+            return new(true, "Audio, visual and scoreboard settings updated and verified.");
         }
         catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex))
         {
@@ -313,10 +314,17 @@ public sealed class AdvancedTransaction
         CheckSession();
         var current = AdvancedDvarValidator.Resolve(memory, feature, requireWritable: true);
         DvarValidator.Require(current.Address == address, "Dvar pointer changed before write/readback.");
-        if (allowBaselineReset && current.RawValue.AsSpan().SequenceEqual(originals[feature].Bytes)) return;
+        if (allowBaselineReset && IsRecognizedReset(feature, current.RawValue, originals[feature])) return;
         DvarValidator.Require(current.RawValue.AsSpan().SequenceEqual(expected),
             ConflictDiagnostics.Advanced(feature, current.RawValue, expected, "expected before write/readback", "Write/readback"));
     }
+
+    // Recognized reset values for the supported Steam build, checked only after
+    // resolving the same dvar and validating its type, domain and writable data page.
+    private static bool IsRecognizedReset(AdvancedDvar feature, byte[] bytes, Original original) =>
+        bytes.AsSpan().SequenceEqual(original.Bytes) ||
+        bytes.AsSpan().SequenceEqual(AdvancedDvarValidator.Encode(feature,
+            feature is AdvancedDvar.Fullbright or AdvancedDvar.PingText ? 0 : 1));
 
     private void CheckSession()
     {

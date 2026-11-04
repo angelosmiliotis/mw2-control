@@ -19,11 +19,15 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     private double _fps = 333;
     private string _lastResult = "Ready. Apply checks the game build before changing settings.";
 
-    public MainViewModel() : this(new ControlEngine()) { }
+    public MainViewModel() : this(new ControlEngine(), PreferencesStore.ForCurrentUser()) { }
 
-    public MainViewModel(ControlEngine engine)
+    public MainViewModel(ControlEngine engine, PreferencesStore? preferences = null)
     {
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
+        _preferences = preferences;
+        HudFeatures = new[] { Ping };
+        AudioFeatures = new[] { Music };
+        VisualFeatures = new[] { Fullbright, Fog, Glow, Detail };
         ScanCommand = new AsyncCommand(() => RunAsync("Inspecting process…", () =>
         {
             var snapshot = _engine.Inspect();
@@ -32,12 +36,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
         ApplyCommand = new AsyncCommand(() =>
         {
+            SavePreferences();
             var tuning = new TuningRequest(UncappedFps ? 0 : (int)Math.Round(RequestedFps), RequestedFov);
             var advanced = CaptureAdvancedSettings();
             return RunAsync("Checking and applying settings…", () =>
             {
                 var result = _engine.ApplySettings(tuning, advanced);
-                return (result.Snapshot, result.Message, result.Success);
+                return (result.Snapshot, result.Message, result.CanMaintainOwned);
             });
         }, () => InputsEnabled);
 
@@ -46,12 +51,14 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             var result = _engine.ResetSettings();
             return (result.Snapshot, result.Message, false);
         }), () => InputsEnabled);
+        LoadPreferences();
         RefreshAdvanced();
     }
 
     public ICommand ScanCommand { get; }
     public ICommand ApplyCommand { get; }
     public ICommand ResetCommand { get; }
+    public string AppVersion => "Version " + typeof(MainViewModel).Assembly.GetName().Version!.ToString(2);
     private bool _uncappedFps;
     public bool UncappedFps { get => _uncappedFps; set { _uncappedFps = value; Refresh(); } }
     public bool FpsSliderEnabled => InputsEnabled && !UncappedFps;
@@ -70,13 +77,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         get => _fps;
         set { _fps = Math.Clamp(Math.Round(value), 30, 500); Notify(); Notify(nameof(RequestedFpsDisplay)); }
     }
-    public string StateLabel => Busy ? "WORKING" : MaintenanceActive ? "SETTINGS ACTIVE" : _snapshot?.State switch
+    public string StateLabel => Busy ? "WORKING" : MaintenanceActive ? "CONNECTED" : _snapshot?.State switch
     {
         EngineState.GameNotRunning => "GAME NOT RUNNING",
         EngineState.UnsupportedBuild => "UNSUPPORTED BUILD",
-        EngineState.ReadOnlyReady => "READ ONLY · READY",
+        EngineState.ReadOnlyReady => "CONNECTED",
         EngineState.Error => "INSPECTION ERROR",
-        _ => "NOT SCANNED"
+        _ => "CONNECTING"
     };
     public string SessionTitle => _snapshot?.State switch
     {
@@ -145,9 +152,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
     public async Task DisposeAsync()
     {
+        if (_closed) return;
+        SavePreferences();
         _closed = true;
         _lifetime.Cancel();
         await StopMaintenanceAsync();
+        if (_monitorTask is not null) await _monitorTask;
         await _gate.WaitAsync();
         try { _engine.Dispose(); }
         finally { _gate.Release(); }
