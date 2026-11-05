@@ -36,11 +36,12 @@ internal static class Program
                 Assert(vm.StateLabel == "GAME NOT RUNNING", "Screenshots use an isolated, disconnected engine");
                 VerifyBindings(window, vm);
                 foreach (var page in new[] { "settings", "diagnostics", "network" }) Render(window, page, 1360, 880, Path.Combine(folder, page + ".png"));
-                foreach (var size in new[] { (1100, 730), (1920, 1080), (2560, 1440), (2560, 1080), (1100, 1200) })
+                foreach (var page in new[] { "settings", "diagnostics", "network" }) Render(window, page, (int)window.MinWidth, (int)window.MinHeight, Path.Combine(folder, page + "-compact.png"));
+                foreach (var size in new[] { (760, 880), (1360, 480), (1100, 730), (1920, 1080), (2560, 1440), (2560, 1080), (1100, 1200) })
                     Render(window, "settings", size.Item1, size.Item2, Path.Combine(folder, $"settings-{size.Item1}x{size.Item2}.png"));
                 VerifyNativeFrame(window);
                 Assert(errors.Errors.Count == 0, "No WPF binding errors: " + string.Join("\n", errors.Errors));
-                File.WriteAllText(Path.Combine(folder, "checks.txt"), "PASS: real-window bindings, sliders, presets, visual/audio/ping switches, specular menu, command wiring, six responsive sizes, zero native top inset, DWM border suppression. No game, user preferences, packet capture or real firewall access. Screenshots show the application disconnected.");
+                File.WriteAllText(Path.Combine(folder, "checks.txt"), "PASS: real-window bindings, sliders, presets, visual/audio/ping switches, specular menu, command wiring, nine responsive sizes, all three pages at minimum size, zero native top inset, DWM border suppression. No game, user preferences, packet capture or real firewall access. Screenshots show the application disconnected.");
                 window.Close();
                 Console.WriteLine("PASS: production UI, native frame and screenshots");
             }
@@ -131,7 +132,7 @@ internal static class Program
         Assert(Math.Abs(bounds.X) < 1 && Math.Abs(bounds.Y) < 1 && Math.Abs(bounds.Width - width) < 1 && Math.Abs(bounds.Height - height) < 1, "No outer gaps at " + width + "x" + height);
         if (page == "settings")
         {
-            foreach (var name in new[] { "FovSlider", "FpsSlider", "Fullbright", "NoFog", "NoGlow", "NoDetail", "Specular", "StreamMute", "NumericPing", "ApplyButton" })
+            foreach (var name in new[] { "FovSlider", "FpsSlider", "Uncapped", "Fullbright", "NoFog", "NoGlow", "NoDetail", "Specular", "StreamMute", "NumericPing", "ApplyButton" })
             {
                 var control = (FrameworkElement)window.FindName(name);
                 var rect = control.TransformToAncestor(root).TransformBounds(new Rect(control.RenderSize));

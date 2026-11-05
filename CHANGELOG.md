@@ -1,5 +1,10 @@
 # Version history
 
+## 1.4 - November 5, 2026
+
+- Shrinks the minimum window from 1100 × 730 to 760 × 480 for use alongside windowed MW2.
+- Adjusts spacing in smaller windows so the game settings, Apply and Reset stay in view.
+
 ## 1.3 - November 5, 2026
 
 - Extends the FOV slider to 130, with 110 and 120 presets.

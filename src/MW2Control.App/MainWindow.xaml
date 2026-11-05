@@ -1,5 +1,5 @@
 <Window x:Class="MW2Control.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:MW2Control.App"
- Title="MW2 Control" Width="1360" Height="880" MinWidth="1100" MinHeight="730" Background="#10150F" Foreground="#F3F2E9" FontFamily="Segoe UI" FontSize="14" WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterScreen" Icon="Assets/MW2Control.ico" UseLayoutRounding="True">
+ Title="MW2 Control" Width="1360" Height="880" MinWidth="760" MinHeight="480" Background="#10150F" Foreground="#F3F2E9" FontFamily="Segoe UI" FontSize="14" WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterScreen" Icon="Assets/MW2Control.ico" UseLayoutRounding="True">
   <WindowChrome.WindowChrome>
    <WindowChrome CaptionHeight="0" GlassFrameThickness="0" ResizeBorderThickness="6" NonClientFrameEdges="None" UseAeroCaptionButtons="False" />
   </WindowChrome.WindowChrome>
@@ -32,7 +32,7 @@
       <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition x:Name="FooterRow" Height="80" /></Grid.RowDefinitions>
       <Grid x:Name="SettingsPage" Margin="28,22,28,20">
        <Grid.RowDefinitions><RowDefinition x:Name="SettingsHeadingRow" Height="88" /><RowDefinition Height="1*" MinHeight="155" /><RowDefinition x:Name="FirstGap" Height="18" /><RowDefinition Height="1.1*" MinHeight="190" /><RowDefinition x:Name="SecondGap" Height="18" /><RowDefinition Height="0.64*" MinHeight="100" /></Grid.RowDefinitions>
-       <StackPanel VerticalAlignment="Top"><TextBlock Text="THE ESSENTIALS, IN ONE PLACE" Style="{StaticResource Eyebrow}" Foreground="#C5D4AC" /><TextBlock Text="Game settings" FontSize="33" FontWeight="SemiBold" Margin="-1,5,0,4" /><TextBlock Text="Your view. Your pace. Your way to play." Foreground="#C0C4B2" FontSize="13" /></StackPanel>
+       <StackPanel VerticalAlignment="Top"><TextBlock Text="THE ESSENTIALS, IN ONE PLACE" Style="{StaticResource Eyebrow}" Foreground="#C5D4AC" /><TextBlock Text="Game settings" FontSize="33" FontWeight="SemiBold" Margin="-1,5,0,4" /><TextBlock x:Name="SettingsTagline" Text="Your view. Your pace. Your way to play." Foreground="#C0C4B2" FontSize="13" /></StackPanel>
        <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
         <Border Style="{StaticResource Card}" BorderBrush="#6B8050"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
          <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="&#xE81D;" Style="{StaticResource Icon}" Margin="0,0,12,0" /><TextBlock Text="Field of view" FontSize="16" FontWeight="SemiBold" /></StackPanel><TextBlock Grid.Column="1" Text="{Binding Value, ElementName=FovSlider, StringFormat={}{0:0}°}" FontSize="35" FontWeight="Light" Foreground="#CCE5A9" /></Grid>

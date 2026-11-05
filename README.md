@@ -2,7 +2,7 @@
 
 Your FOV, FPS, audio and visual settings for **Call of Duty: Modern Warfare 2 (2009)** on Steam, in one Windows app.
 
-**[Download MW2 Control](https://github.com/angelosmiliotis/mw2-control/releases/download/v1.3/MW2-Control-1.3-Standalone-x64.exe)**
+**[Download MW2 Control](https://github.com/angelosmiliotis/mw2-control/releases/download/v1.4/MW2-Control-1.4-Standalone-x64.exe)**
 
 One EXE for Windows x64. The .NET runtime is included. Download the Standalone EXE from **Assets**; GitHub's source-code ZIP is for developers.
 

@@ -56,16 +56,18 @@ public partial class MainWindow : Window
 
     internal void ConfigureLayout(double width, double height)
     {
-        var scale = Math.Clamp(Math.Min(width / 1360, height / 880), .85, 1.7);
+        var scale = Math.Clamp(Math.Min(width / 1360, height / 880), .68, 1.7);
         UiScale.ScaleX = UiScale.ScaleY = scale;
-        var compact = height / scale < 820;
+        var layoutWidth = width / scale;
+        var compact = height / scale < 820 || layoutWidth < 1250;
         HeaderRow.Height = new GridLength(compact ? 64 : 72);
         FooterRow.Height = new GridLength(compact ? 76 : 80);
-        SidebarColumn.Width = new GridLength(width / scale < 1250 ? 210 : 230);
-        SettingsPage.Margin = compact ? new Thickness(24, 18, 24, 18) : new Thickness(28, 22, 28, 20);
-        SettingsHeadingRow.Height = new GridLength(compact ? 72 : 88);
+        SidebarColumn.Width = new GridLength(layoutWidth < 1250 ? 210 : 230);
+        SettingsPage.Margin = compact ? new Thickness(24, 14, 24, 14) : new Thickness(28, 22, 28, 20);
+        SettingsHeadingRow.Height = new GridLength(compact ? 68 : 88);
+        SettingsTagline.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         FirstGap.Height = SecondGap.Height = new GridLength(compact ? 14 : 18);
-        SettingsPage.RowDefinitions[1].MinHeight = compact ? 148 : 155;
+        SettingsPage.RowDefinitions[1].MinHeight = compact ? 164 : 155;
         SettingsPage.RowDefinitions[3].MinHeight = compact ? 178 : 190;
         SettingsPage.RowDefinitions[5].MinHeight = compact ? 92 : 100;
     }
