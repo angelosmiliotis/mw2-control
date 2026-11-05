@@ -32,6 +32,7 @@ public sealed partial class MainViewModel
         // Yield before the first native operation so Start can store the loop task.
         await Task.Yield();
         var displayClock = System.Diagnostics.Stopwatch.StartNew();
+        var validationClock = System.Diagnostics.Stopwatch.StartNew();
         var stoppedForError = false;
         var recovering = false;
         AddActivity("Settings retention started after Apply.");
@@ -41,14 +42,26 @@ public sealed partial class MainViewModel
             {
                 token.ThrowIfCancellationRequested();
                 await _gate.WaitAsync(token);
-                OperationResult result;
+                OperationResult? result = null;
                 try
                 {
                     token.ThrowIfCancellationRequested();
                     if (_closed) break;
-                    result = await Task.Run(() => _engine.MaintainOwned(true));
+                    var quickMatch = !recovering && validationClock.ElapsedMilliseconds < 500 &&
+                        await Task.Run(_engine.OwnedValuesMatchReadOnly);
+                    if (!quickMatch)
+                    {
+                        result = await Task.Run(() => _engine.MaintainOwned(true));
+                        validationClock.Restart();
+                    }
                 }
                 finally { _gate.Release(); }
+
+                if (result is null)
+                {
+                    await Task.Delay(50, token);
+                    continue;
+                }
 
                 var snapshot = result.Snapshot;
                 if (!result.CanMaintainOwned ||
@@ -81,7 +94,7 @@ public sealed partial class MainViewModel
                     Refresh();
                     displayClock.Restart();
                 }
-                await Task.Delay(recovering ? 1000 : 500, token);
+                await Task.Delay(recovering ? 1000 : 50, token);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }

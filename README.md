@@ -2,7 +2,7 @@
 
 Your FOV, FPS, audio and visual settings for **Call of Duty: Modern Warfare 2 (2009)** on Steam, in one Windows app.
 
-**[Download MW2 Control](https://github.com/angelosmiliotis/mw2-control/releases/download/v1.2/MW2-Control-1.2-Standalone-x64.exe)**
+**[Download MW2 Control](https://github.com/angelosmiliotis/mw2-control/releases/download/v1.3/MW2-Control-1.3-Standalone-x64.exe)**
 
 One EXE for Windows x64. The .NET runtime is included. Download the Standalone EXE from **Assets**; GitHub's source-code ZIP is for developers.
 
@@ -20,7 +20,7 @@ Your choices are remembered. Apply keeps them active and reapplies recognized ga
 
 | Setting | What it does |
 | --- | --- |
-| **Field of view** | Changes how much of the scene you see. Starts at **90**. |
+| **Field of view** | Changes how much of the scene you see, from **65 to 130**. Starts at **90**. |
 | **Frame cap** | Sets your FPS limit. Starts at **333**. Use **Uncapped FPS** to remove the cap. |
 | **Mute streamed sounds** | Mutes background music and streamed ambience while keeping gameplay sounds such as footsteps, gunfire, explosions and the bomb timer. |
 | **Fullbright** | Uses flat lighting to brighten the scene. |

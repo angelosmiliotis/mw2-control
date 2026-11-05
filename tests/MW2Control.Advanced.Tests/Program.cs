@@ -80,13 +80,15 @@ Test("all-false unowned settings ignore optional missing controls", () =>
     Equal(0, memory.ReadCalls);
 });
 
-Test("byte boolean writes preserve adjacent union, flags, latched and default bytes", () =>
+Test("fullbright value and approved refresh preserve other metadata and defaults", () =>
 {
     var memory = FakeMemory.Create();
     var beforeHeader = memory.Raw(FakeMemory.Dvar(AdvancedDvar.Fullbright) + 0x0C, 1);
     True(new AdvancedTransaction(memory).Apply(none with { Fullbright = true }, true).Success);
-    Equal(1, memory.Writes.Count);
+    Equal(2, memory.Writes.Count);
     Equal(1, memory.Writes[0].Bytes.Length);
+    Equal(FakeMemory.Dvar(AdvancedDvar.Fullbright) + 0x0D, memory.Writes[1].Address);
+    Bytes([1], memory.Writes[1].Bytes);
     Bytes([1, 0xA5, 0xA5, 0xA5], memory.Raw(FakeMemory.Value(AdvancedDvar.Fullbright), 4));
     Bytes(beforeHeader, memory.Raw(FakeMemory.Dvar(AdvancedDvar.Fullbright) + 0x0C, 1));
     Bytes([0x31, 0x32, 0x33, 0x34], memory.Raw(FakeMemory.Dvar(AdvancedDvar.Fullbright) + 0x20, 4));
@@ -114,15 +116,15 @@ Test("every advanced control applies atomically then false/null restores capture
     var transaction = new AdvancedTransaction(memory);
     var originals = Enum.GetValues<AdvancedDvar>().ToDictionary(feature => feature, memory.Current);
     True(transaction.Apply(all, true).Success);
-    Equal(7, memory.WriteCalls);
+    Equal(8, memory.WriteCalls);
     Equal(0, memory.Current(AdvancedDvar.StreamEnabled));
     Equal(1, memory.Current(AdvancedDvar.Fullbright));
     Equal(0, memory.Current(AdvancedDvar.DetailMap));
     True(transaction.Apply(none, true).Success);
     foreach (var feature in Enum.GetValues<AdvancedDvar>()) Equal(originals[feature], memory.Current(feature));
-    Equal(14, memory.WriteCalls);
+    Equal(16, memory.WriteCalls);
     True(transaction.Restore(true).Success);
-    Equal(14, memory.WriteCalls);
+    Equal(16, memory.WriteCalls);
 });
 
 Test("false preserves unowned changes from another writer", () =>
@@ -145,7 +147,8 @@ Test("already-target baselines are never claimed or forced to defaults", () =>
     True(transaction.Apply(all, true).Success);
     True(transaction.Apply(none, true).Success);
     True(transaction.Restore(true).Success);
-    Equal(0, memory.WriteCalls);
+    Equal(1, memory.WriteCalls);
+    Equal(FakeMemory.Dvar(AdvancedDvar.Fullbright) + 0x0D, memory.Writes[0].Address);
     Equal(1, memory.Current(AdvancedDvar.Fullbright));
     Equal(0, memory.Current(AdvancedDvar.StreamEnabled));
 });
@@ -240,7 +243,7 @@ Test("failed readback rolls back earlier writes", () =>
     False(new AdvancedTransaction(memory).Apply(none with { MuteStreams = true, Fullbright = true }, true).Success);
     Equal(1, memory.Current(AdvancedDvar.StreamEnabled));
     Equal(0, memory.Current(AdvancedDvar.Fullbright));
-    Equal(3, memory.WriteCalls);
+    Equal(4, memory.WriteCalls);
 });
 
 Test("rollback preserves externally changed bytes and reports incomplete ownership", () =>
@@ -896,7 +899,7 @@ Test("dispose never implicitly restores advanced values", () =>
     True(engine.ApplyAdvanced(none with { Fullbright = true }, true).Success);
     engine.Dispose();
     Equal(1, memory.Current(AdvancedDvar.Fullbright));
-    Equal(1, memory.WriteCalls);
+    Equal(2, memory.WriteCalls);
     Equal(EngineState.Error, engine.ResetSession().State);
 });
 
@@ -1179,6 +1182,160 @@ Test("settings rollback refuses another writer's bytes and stops automatic write
     var writes = memory.WriteCalls;
     False(engine.MaintainOwned(true).CanMaintainOwned);
     Equal(writes, memory.WriteCalls);
+});
+
+Test("fullbright refresh is requested on enable and restore and may be consumed immediately", () =>
+{
+    var memory = FakeMemory.Create();
+    var marker = FakeMemory.Dvar(AdvancedDvar.Fullbright) + 0x0D;
+    memory.AfterWrite = (_, address, _) => { if (address == marker) memory.Put(marker, [0]); };
+    var transaction = new AdvancedTransaction(memory);
+    True(transaction.Apply(none with { Fullbright = true }, true).Success);
+    Equal(1, memory.Current(AdvancedDvar.Fullbright));
+    True(transaction.Apply(none, true).Success);
+    Equal(0, memory.Current(AdvancedDvar.Fullbright));
+    Equal(2, memory.Writes.Count(write => write.Address == marker));
+    True(memory.Writes.Where(write => write.Address == marker).All(write => write.Bytes.AsSpan().SequenceEqual(new byte[] { 1 })));
+});
+
+Test("native refresh whitelist permits only fullbright modified equals one", () =>
+{
+    var memory = FakeMemory.Create();
+    var dvar = FakeMemory.Dvar(AdvancedDvar.Fullbright);
+    True(DvarWritePolicy.IsAllowed(memory, dvar + 0x0D, [1]));
+    False(DvarWritePolicy.IsAllowed(memory, dvar + 0x0D, [0]));
+    False(DvarWritePolicy.IsAllowed(memory, dvar + 0x0D, [2]));
+    False(DvarWritePolicy.IsAllowed(memory, dvar + 0x0D, [1, 0, 0, 0]));
+    foreach (var offset in new ulong[] { 8, 9, 10, 11, 12, 14, 15, 32, 48, 64 }) False(DvarWritePolicy.IsAllowed(memory, dvar + offset, [1]));
+    foreach (var feature in Enum.GetValues<AdvancedDvar>().Where(feature => feature != AdvancedDvar.Fullbright))
+        False(DvarWritePolicy.IsAllowed(memory, FakeMemory.Dvar(feature) + 0x0D, [1]));
+    memory.IdentityValid = false;
+    False(DvarWritePolicy.IsAllowed(memory, dvar + 0x0D, [1]));
+});
+
+Test("unwritable or invalid fullbright marker rejects preflight without earlier writes", () =>
+{
+    foreach (var invalidMarker in new[] { false, true })
+    {
+        var memory = FakeMemory.Create();
+        var marker = FakeMemory.Dvar(AdvancedDvar.Fullbright) + 0x0D;
+        if (invalidMarker) memory.Put(marker, [2]); else memory.Protections[marker] = MemoryProtection.ReadOnly;
+        False(new AdvancedTransaction(memory).Apply(none with { MuteStreams = true, Fullbright = true }, true).Success);
+        Equal(0, memory.WriteCalls);
+    }
+});
+
+Test("failed fullbright notification rolls the value back and requests renderer recovery", () =>
+{
+    var memory = FakeMemory.Create();
+    memory.WriteCounts[2] = 0;
+    False(new AdvancedTransaction(memory).Apply(none with { Fullbright = true }, true).Success);
+    Equal(0, memory.Current(AdvancedDvar.Fullbright));
+    Equal(4, memory.WriteCalls);
+    Equal(FakeMemory.Dvar(AdvancedDvar.Fullbright) + 0x0D, memory.Writes.Last().Address);
+});
+
+Test("unchanged fullbright maintenance does not keep writing the renderer marker", () =>
+{
+    var memory = FakeMemory.Create();
+    var transaction = new AdvancedTransaction(memory);
+    True(transaction.Apply(none with { Fullbright = true }, true).Success);
+    var writes = memory.WriteCalls;
+    for (var tick = 0; tick < 20; tick++) True(transaction.ReapplyOwned().Success);
+    Equal(writes, memory.WriteCalls);
+});
+
+Test("fast observation uses only held target reads and never writes or opens a session", () =>
+{
+    var memory = FakeMemory.Create();
+    var source = new FakeSource(memory);
+    using var engine = new ControlEngine(source);
+    False(engine.OwnedValuesMatchReadOnly());
+    Equal(0, source.OpenCalls);
+    True(engine.ApplySettings(new(165, 120), none).Success);
+    var reads = memory.ReadCalls;
+    var writes = memory.WriteCalls;
+    var opens = source.OpenCalls;
+    for (var tick = 0; tick < 1000; tick++) True(engine.OwnedValuesMatchReadOnly());
+    Equal(2000, memory.ReadCalls - reads);
+    Equal(writes, memory.WriteCalls);
+    Equal(opens, source.OpenCalls);
+    memory.Put32(0x210010, BitConverter.SingleToInt32Bits(65));
+    False(engine.OwnedValuesMatchReadOnly());
+    Equal(writes, memory.WriteCalls);
+    True(engine.MaintainOwned(true).Success);
+    Equal(120f, BitConverter.ToSingle(memory.Raw(0x210010, 4)));
+});
+
+Test("fast drift still uses full pointer type protection and lifetime guards before writes", () =>
+{
+    foreach (var guard in new[] { "pointer", "type", "protection", "lifetime" })
+    {
+        var memory = FakeMemory.Create();
+        using var engine = new ControlEngine(new FakeSource(memory));
+        True(engine.ApplySettings(new(165, 120), none).Success);
+        memory.Put32(0x210010, BitConverter.SingleToInt32Bits(65));
+        if (guard == "pointer") memory.Put64(memory.Identity.ModuleBase + KnownBuild.FovPointerRva, 0x210100);
+        if (guard == "type") memory.Put(0x21000C, [5]);
+        if (guard == "protection") memory.Protections[0x210010] = MemoryProtection.ReadOnly;
+        if (guard == "lifetime") memory.IdentityValid = false;
+        var writes = memory.WriteCalls;
+        False(engine.OwnedValuesMatchReadOnly());
+        False(engine.MaintainOwned(true).Success);
+        Equal(writes, memory.WriteCalls);
+    }
+});
+
+Test("fast observation detects advanced drift and short reads without changing staged targets", () =>
+{
+    var memory = FakeMemory.Create();
+    using var engine = new ControlEngine(new FakeSource(memory));
+    True(engine.ApplySettings(new(165, 120), none with { NumericPing = true }).Success);
+    True(engine.OwnedValuesMatchReadOnly());
+    memory.SetCurrent(AdvancedDvar.PingText, 0);
+    False(engine.OwnedValuesMatchReadOnly());
+    True(engine.MaintainOwned(true).Success);
+    memory.ShortRead = 0x210010;
+    var writes = memory.WriteCalls;
+    False(engine.OwnedValuesMatchReadOnly());
+    Equal(writes, memory.WriteCalls);
+    memory.ShortRead = null;
+    True(engine.ResetSettings().Success);
+    False(engine.OwnedValuesMatchReadOnly());
+});
+
+Test("fast observation stays bounded with every visual audio and HUD target enabled", () =>
+{
+    var memory = FakeMemory.Create();
+    using var engine = new ControlEngine(new FakeSource(memory));
+    True(engine.ApplySettings(new(165, 120), all with { NumericPing = true }).Success);
+    var reads = memory.ReadCalls;
+    var writes = memory.WriteCalls;
+    for (var tick = 0; tick < 1000; tick++) True(engine.OwnedValuesMatchReadOnly());
+    Equal(11000, memory.ReadCalls - reads);
+    Equal(writes, memory.WriteCalls);
+});
+
+Test("fast observation benchmark reports reads per stable tick without timing assertions", () =>
+{
+    var memory = FakeMemory.Create();
+    var source = new FakeSource(memory);
+    using var engine = new ControlEngine(source);
+    True(engine.ApplySettings(new(165, 120), none).Success);
+    var writes = memory.WriteCalls;
+    var fastReads = memory.ReadCalls;
+    var fastClock = System.Diagnostics.Stopwatch.StartNew();
+    for (var tick = 0; tick < 5000; tick++) True(engine.OwnedValuesMatchReadOnly());
+    fastClock.Stop();
+    fastReads = memory.ReadCalls - fastReads;
+    var deepReads = memory.ReadCalls;
+    var deepClock = System.Diagnostics.Stopwatch.StartNew();
+    for (var tick = 0; tick < 100; tick++) True(engine.MaintainOwned(true).Success);
+    deepClock.Stop();
+    deepReads = memory.ReadCalls - deepReads;
+    Equal(10000, fastReads);
+    Equal(writes, memory.WriteCalls);
+    Console.WriteLine($"BENCH synthetic: fast {fastReads / 5000.0:0.##} reads/tick, {fastClock.Elapsed.TotalMilliseconds / 5000:0.0000} ms/tick; full {deepReads / 100.0:0.##} reads/tick, {deepClock.Elapsed.TotalMilliseconds / 100:0.0000} ms/tick. Stable ticks performed no writes.");
 });
 
 Console.WriteLine($"Results: {passed} passed, {failed} failed, {passed + failed} total (synthetic only)");

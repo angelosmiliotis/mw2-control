@@ -20,7 +20,7 @@ public sealed record UserPreferences
 
     public UserPreferences Normalize() => this with
     {
-        Fov = double.IsFinite(Fov) ? Math.Clamp(Math.Round(Fov), 65, 100) : 90,
+        Fov = double.IsFinite(Fov) ? Math.Clamp(Math.Round(Fov), 65, 130) : 90,
         Fps = double.IsFinite(Fps) ? Math.Clamp(Math.Round(Fps), 30, 500) : 333,
         SpecularChoice = Math.Clamp(SpecularChoice, 0, 3),
         NetworkAdapterId = NetworkAdapterId is { Length: > 0 and <= 256 } ? NetworkAdapterId : null

@@ -69,7 +69,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public double RequestedFov
     {
         get => _fov;
-        set { _fov = Math.Clamp(Math.Round(value), 65, 100); Notify(); }
+        set { _fov = Math.Clamp(Math.Round(value), 65, 130); Notify(); }
     }
     public double RequestedFps
     {

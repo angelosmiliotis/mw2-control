@@ -19,6 +19,7 @@ internal static class Program
                 await Smoke();
                 await Preferences();
                 await ConnectionAndRecovery();
+                await RespawnRecoverySamples();
                 await WorkflowTests.RunAsync();
                 Console.WriteLine("PASS: headless app checks (no game access or firewall changes)");
             }
@@ -27,6 +28,36 @@ internal static class Program
         }));
         Dispatcher.Run();
         return exit;
+    }
+
+    private static async Task RespawnRecoverySamples()
+    {
+        var memory = new FakeMemory();
+        var vm = new MainViewModel(new ControlEngine(new FakeSource(memory)));
+        try
+        {
+            vm.ScanCommand.Execute(null);
+            await Until(() => !vm.Busy);
+            vm.RequestedFov = 120;
+            vm.ApplyCommand.Execute(null);
+            await Until(() => !vm.Busy);
+            var samples = new List<double>();
+            for (var respawn = 0; respawn < 20; respawn++)
+            {
+                await Task.Delay(7 + respawn % 11);
+                memory.SetFov(65);
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                while (BitConverter.ToSingle(memory.ReadMemory(0x200010, 4)) != 120)
+                {
+                    if (clock.ElapsedMilliseconds > 1500) throw new TimeoutException("Synthetic respawn did not recover.");
+                    await Task.Delay(5);
+                }
+                samples.Add(clock.Elapsed.TotalMilliseconds);
+            }
+            Console.WriteLine($"BENCH synthetic respawns: 20 resets; mean {samples.Average():0.0} ms, max {samples.Max():0.0} ms (fake memory; not in-game timings).");
+            Assert(vm.MaintenanceActive, "repeated respawns preserve the applied FOV request");
+        }
+        finally { await vm.DisposeAsync(); }
     }
 
     private static async Task Preferences()
@@ -38,7 +69,7 @@ internal static class Program
             var memory = new FakeMemory();
             var vm = new MainViewModel(new ControlEngine(new FakeSource(memory)), store);
             Assert(vm.RequestedFov == 90 && vm.RequestedFps == 333, "first launch uses 90 FOV and 333 FPS");
-            vm.RequestedFov = 97;
+            vm.RequestedFov = 130;
             vm.RequestedFps = 240;
             vm.UncappedFps = true;
             vm.Music.Requested = vm.Fullbright.Requested = vm.Fog.Requested = true;
@@ -46,7 +77,7 @@ internal static class Program
             vm.SpecularChoice = 3;
             await vm.DisposeAsync();
             var restored = new MainViewModel(new ControlEngine(new FakeSource(memory)), store);
-            Assert(restored.RequestedFov == 97 && restored.RequestedFps == 240 && restored.UncappedFps &&
+            Assert(restored.RequestedFov == 130 && restored.RequestedFps == 240 && restored.UncappedFps &&
                 restored.Music.Requested && restored.Fullbright.Requested && restored.Fog.Requested &&
                 restored.Glow.Requested && restored.Detail.Requested && restored.Ping.Requested && restored.SpecularChoice == 3,
                 "all selected preferences survive reopening");
@@ -59,7 +90,7 @@ internal static class Program
             await fallback.DisposeAsync();
             File.WriteAllText(path, "{\"Fov\":1000,\"Fps\":-10,\"SpecularChoice\":40}");
             var normalized = store.Load();
-            Assert(normalized.Fov == 100 && normalized.Fps == 30 && normalized.SpecularChoice == 3,
+            Assert(normalized.Fov == 130 && normalized.Fps == 30 && normalized.SpecularChoice == 3,
                 "out-of-range saved preferences are normalized");
         }
         finally { File.Delete(path); }

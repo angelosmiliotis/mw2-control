@@ -6,13 +6,13 @@ var suite = new TestSuite();
 suite.Run("request bounds accept inclusive endpoints", () =>
 {
     Check.True(TuningValidation.ValidateRequest(new(30, 65)).Success);
-    Check.True(TuningValidation.ValidateRequest(new(500, 100)).Success);
+    Check.True(TuningValidation.ValidateRequest(new(500, 130)).Success);
 });
 suite.Run("request bounds reject out of range and NaN/infinity", () =>
 {
     foreach (var request in new TuningRequest?[]
     {
-        null, new(29, 90), new(501, 90), new(144, 64.999), new(144, 100.001),
+        null, new(29, 90), new(501, 90), new(144, 64.999), new(144, 130.001),
         new(144, double.NaN), new(144, double.PositiveInfinity), new(144, double.NegativeInfinity)
     }) Check.False(TuningValidation.ValidateRequest(request).Success);
 });

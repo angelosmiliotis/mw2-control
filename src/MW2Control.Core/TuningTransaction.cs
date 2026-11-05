@@ -15,6 +15,24 @@ public sealed class TuningTransaction
     private readonly Dictionary<TuningFeature, Original> originals = [];
     private bool maintenanceSeeded;
 
+    // Cached addresses are only a read hint. All writes still use full validation.
+    internal bool MatchesTargetsReadOnly()
+    {
+        lock (gate)
+        {
+            try
+            {
+                foreach (var original in originals.Values)
+                {
+                    if (original.Target is null) continue;
+                    if (!maintenanceSeeded || !memory.ReadMemory(original.Address, original.Target.Length).AsSpan().SequenceEqual(original.Target)) return false;
+                }
+                return true;
+            }
+            catch (Exception ex) when (IsExpectedFailure(ex)) { return false; }
+        }
+    }
+
     internal sealed class Original(ulong address, byte[] bytes)
     {
         public ulong Address { get; } = address;

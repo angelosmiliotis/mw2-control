@@ -50,6 +50,7 @@ internal sealed class FakeMemory : IProcessMemory
             memory.Put64(Dvar(feature), Name(feature));
             memory.Put(Name(feature), Encoding.ASCII.GetBytes(definition.Name + "\0"));
             memory.Put(Dvar(feature) + 0x0C, [(byte)(feature is AdvancedDvar.SpecularMap or AdvancedDvar.DetailMap ? 6 : 0)]);
+            memory.Put(Dvar(feature) + 0x0D, [0]);
             // Canary bytes in the union and defaults/latched fields must never be written.
             memory.Put(Value(feature), [0, 0xA5, 0xA5, 0xA5]);
             memory.Put(Dvar(feature) + 0x20, [0x31, 0x32, 0x33, 0x34]);
@@ -142,6 +143,7 @@ internal sealed class FakeMemory : IProcessMemory
         BinaryPrimitives.WriteInt32LittleEndian(valueBytes, value);
         Put(address, valueBytes);
     }
+    internal IReadOnlyDictionary<ulong, byte> ExportBytes() => new Dictionary<ulong, byte>(bytes);
     public void Dispose() => Disposed = true;
 }
 

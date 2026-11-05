@@ -138,10 +138,19 @@ public sealed class ControlEngine : IDisposable
     }
 
     /// <summary>
-    /// One opt-in maintenance tick over the held session. Does not discover/reopen
-    /// a target, hash the executable, schedule work, or seed new originals/targets.
-    /// CanMaintainOwned permits another guarded tick in the same session after transient failure.
+    /// Read-only target comparison over the existing handle. False requests a full
+    /// validated tick; true never grants permission to write or extends a session.
     /// </summary>
+    public bool OwnedValuesMatchReadOnly()
+    {
+        lock (gate)
+        {
+            if (disposed || maintenanceFaulted || memory is null || transaction is null || advancedTransaction is null || !HasMaintainableTargets()) return false;
+            return transaction.MatchesTargetsReadOnly() && advancedTransaction.MatchesTargetsReadOnly();
+        }
+    }
+
+    /// <summary>Fully validated maintenance of the current session's applied targets.</summary>
     public OperationResult MaintainOwned(bool privateSessionConfirmed)
     {
         lock (gate)

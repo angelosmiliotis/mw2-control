@@ -110,6 +110,16 @@ public static class DvarWritePolicy
         ArgumentNullException.ThrowIfNull(memory);
         ArgumentNullException.ThrowIfNull(data);
         if (!TuningValidation.ValidateProfile(memory.Identity).Success || !memory.ValidateIdentity()) return false;
+        if (data.Length == 1 && data[0] == 1)
+        {
+            try
+            {
+                var fullbright = AdvancedDvarValidator.Resolve(memory, AdvancedDvar.Fullbright, requireWritable: true);
+                if (address == fullbright.Address - 3)
+                    return FullbrightRefresh.Validate(memory, fullbright.Address) == address;
+            }
+            catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex)) { }
+        }
         if (data.Length == 4)
         {
             foreach (var feature in Enum.GetValues<TuningFeature>())
@@ -130,6 +140,7 @@ public static class DvarWritePolicy
             {
                 var current = AdvancedDvarValidator.Resolve(memory, feature, requireWritable: true);
                 if (current.Address != address || current.RawValue.Length != data.Length) continue;
+                if (feature == AdvancedDvar.Fullbright) FullbrightRefresh.Validate(memory, current.Address);
                 var value = data.Length == 1 ? data[0] : BinaryPrimitives.ReadInt32LittleEndian(data);
                 return AdvancedDvarValidator.Encode(feature, value).AsSpan().SequenceEqual(data);
             }

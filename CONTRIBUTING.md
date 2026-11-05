@@ -14,7 +14,15 @@ Create the standalone download, including the .NET runtime:
 pwsh -File scripts/Build-Download.ps1
 ```
 
-The EXE is written to `out/packaging-1.2/Standalone`. Third-party license notices are embedded in the app and stored in [docs/licenses](docs/licenses).
+The EXE is written to `out/packaging-1.3/Standalone`. Third-party license notices are embedded in the app and stored in [docs/licenses](docs/licenses).
+
+To replace your Desktop copy with that build:
+
+```powershell
+pwsh -File scripts/Install-Desktop.ps1
+```
+
+It checks the version and checksum, saves the previous EXE under Documents/MW2 Control Archive and installs the new EXE in Desktop/MW2 Control. Close the Desktop copy first. Saved preferences are kept separately.
 
 ## Run the checks
 
@@ -32,7 +40,9 @@ The [core](src/MW2Control.Core/README.md) and [network](src/MW2Control.Network/R
 ## UI screenshots
 
 ```powershell
-dotnet run --project tools/MW2Control.Screenshots/MW2Control.Screenshots.csproj -c Release -- out/screenshots-1.2
+dotnet run --project tools/MW2Control.Screenshots/MW2Control.Screenshots.csproj -c Release -- out/screenshots-1.3
 ```
 
 This renders the actual application with an isolated, disconnected engine. It checks the control bindings, native window border and six window sizes without opening a visible window or accessing a game, saved user settings, packet capture or firewall rules.
+
+For a retention CPU and native-read comparison, see the [benchmark tool](tools/MW2Control.Benchmarks).

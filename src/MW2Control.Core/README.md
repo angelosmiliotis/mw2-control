@@ -6,7 +6,7 @@ The core handles game discovery, build checks and settings changes. The WPF app 
 
 A session includes the PID, process start time, executable path, module base and size, architecture and SHA-256. The engine keeps a read handle and a file handle for the inspected executable. Cached inspection avoids hashing the same held file on every refresh.
 
-Before writing, the core checks the session, dvar pointer, exact name, value range and memory protection. A temporary write handle is used for the current-value field. Short writes and readback failures trigger rollback where the changed bytes can still be identified.
+Before writing, the core checks the session, dvar pointer, exact name, value range and memory protection. A temporary write handle is used for each allowed write. Short writes and readback failures trigger rollback where the changed bytes can still be identified.
 
 Restore uses the original values captured for that process. A replacement process needs a fresh Apply. Closing the engine releases its handles.
 
@@ -15,6 +15,8 @@ Restore uses the original values captured for that process. A replacement proces
 `ApplySettings(TuningRequest, AdvancedSettings)` checks both groups before writing. It records the previous values and restore history, applies FOV/FPS, then audio, visuals and scoreboard settings. An interrupted operation rolls back through the same address and ownership guards. Successful rollback restores the previous recovery targets. Concurrent changes that cannot be attributed to the app prevent rollback and stop recovery.
 
 `MaintainOwned(true)` performs one recovery check against the existing session. The app schedules checks after Apply. It can recover a captured baseline or a recognized reset value, including FOV 65 and FPS 85 on the supported build. Temporary failures preserve the last successful requests for another checked attempt. Unknown values wait for recognizable data. A process-lifetime change stops recovery.
+
+Between full validation ticks, `OwnedValuesMatchReadOnly()` compares the applied target bytes through the existing read handle. This is a read-only hint; a mismatch or read failure always returns to full pointer, type, memory-protection and session checks before any write. The app polls this path at 50 ms, performs periodic full checks at 500 ms and refreshes Diagnostics at most once per second. Transient recovery failures retain the slower retry delay.
 
 Already-matching settings are remembered as requests too. This allows a later game reset to be recovered even when the initial Apply needed no write. Original values remain separate from requested values.
 
@@ -30,7 +32,7 @@ The supported executable hash is
 926F8A47959F2B24420898D07F599883E0866050D42D5289F94EEF546A4A3492
 ```
 
-The dvar name pointer is at +0x00, type at +0x0C, current value at +0x10 and domain at +0x40. Boolean writes are one byte. Float, integer and enum writes are four bytes. Latched values, defaults, flags, domains and executable code are left intact.
+The dvar name pointer is at +0x00, type at +0x0C, current value at +0x10 and domain at +0x40. Boolean writes are one byte. Float, integer and enum writes are four bytes. The sole additional renderer notification is `r_fullbright.modified` at +0x0D: write 1 after a Fullbright change, including restoration and rollback. The marker is validated as boolean and writable and is consumed by the engine. The app never restores it to 0 or continuously maintains it. Permission flags, latched values, defaults, domains and executable code are left intact.
 
 | Setting | Cached pointer RVA | Type |
 | --- | --- | --- |
@@ -48,7 +50,7 @@ The dvar name pointer is at +0x00, type at +0x0C, current value at +0x10 and dom
 
 Specular uses Black, Unchanged, White and Gray. The app requests the first three values and can restore a captured Gray value. Its table is at RVA 0x577860, with strings at 0x3C2F14, 0x3C2F20, 0x3C2F2C and 0x3C2F34. Detail-map uses Hidden and Unchanged, with table RVA 0x5779C0 and strings at 0x3C2F3C and 0x3C2F20. Runtime checks include counts, relocated pointers, exact strings and the null terminator.
 
-Requests accepted by the app are FOV 65-100 and FPS 30-500, plus 0 for uncapped FPS. Runtime validation checks the captured registration metadata before changing current values.
+Requests accepted by the app are FOV 65-130 and FPS 30-500, plus 0 for uncapped FPS. Runtime validation checks the captured registration metadata before changing current values.
 
 ## Checking the executable on disk
 

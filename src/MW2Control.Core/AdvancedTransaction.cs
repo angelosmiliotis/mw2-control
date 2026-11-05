@@ -21,6 +21,24 @@ public sealed class AdvancedTransaction
     private readonly object gate = new();
     private readonly Dictionary<AdvancedDvar, Original> originals = [];
     private bool maintenanceSeeded;
+
+    // A mismatch requests the existing full validator; it never permits a write.
+    internal bool MatchesTargetsReadOnly()
+    {
+        lock (gate)
+        {
+            try
+            {
+                foreach (var original in originals.Values)
+                {
+                    if (original.Target is null) continue;
+                    if (!maintenanceSeeded || !memory.ReadMemory(original.Address, original.Target.Length).AsSpan().SequenceEqual(original.Target)) return false;
+                }
+                return true;
+            }
+            catch (Exception ex) when (TuningTransaction.IsExpectedFailure(ex)) { return false; }
+        }
+    }
     internal sealed class Original(ulong address, byte[] bytes)
     {
         public ulong Address { get; } = address;
@@ -126,7 +144,7 @@ public sealed class AdvancedTransaction
                 ReadFeature("music", "Mute streamed sounds", [AdvancedDvar.StreamEnabled], values => values[0].Value == 0 ? 1 : 0,
                     "Disables streamed audio. In a live multiplayer test, footsteps, gunfire, explosions, and the bomb timer remained audible."),
                 ReadFeature("fullbright", "Fullbright", [AdvancedDvar.Fullbright], values => values[0].Value,
-                    "Changes the validated fullbright data value; visual effect may require a map/session transition."),
+                    "Updates r_fullbright and requests a renderer refresh through its validated modified marker."),
                 ReadFeature("fog", "No fog", [AdvancedDvar.Fog], values => values[0].Value == 0 ? 1 : 0,
                     "Disables the validated fog toggle only."),
                 ReadFeature("glow", "No glow", [AdvancedDvar.Glow], values => values[0].Value == 0 ? 1 : 0,
@@ -267,6 +285,7 @@ public sealed class AdvancedTransaction
             // unsupported features with no owned writes are deliberately not resolved.
             if (target is null && original?.Owned is null) { forget.Add(feature); continue; }
             var value = AdvancedDvarValidator.Resolve(memory, feature, requireWritable: true);
+            if (feature == AdvancedDvar.Fullbright) FullbrightRefresh.Validate(memory, value.Address);
             if (original?.Owned is not null)
             {
                 DvarValidator.Require(original.Address == value.Address, $"{feature}: dvar mapping changed; originals cannot move to a new address.");
@@ -298,7 +317,12 @@ public sealed class AdvancedTransaction
         {
             foreach (var plan in plans)
             {
-                if (plan.Before.AsSpan().SequenceEqual(plan.Desired)) continue;
+                if (plan.Before.AsSpan().SequenceEqual(plan.Desired))
+                {
+                    if (!maintaining && !plan.Restore && plan.Feature == AdvancedDvar.Fullbright)
+                        FullbrightRefresh.Request(memory, plan.Address);
+                    continue;
+                }
                 var attempt = new Attempt(plan);
                 attempts.Add(attempt);
                 WriteChecked(plan.Feature, plan.Address, plan.Before, plan.Desired,
@@ -330,6 +354,7 @@ public sealed class AdvancedTransaction
                     DvarValidator.Require(current.Address == plan.Address, "Address changed during rollback.");
                     if (current.RawValue.AsSpan().SequenceEqual(plan.Before))
                     {
+                        if (plan.Feature == AdvancedDvar.Fullbright) FullbrightRefresh.Request(memory, plan.Address);
                         originals[plan.Feature].Owned = Clone(plan.PreviousOwned);
                         continue;
                     }
@@ -354,6 +379,7 @@ public sealed class AdvancedTransaction
         Action beforeInvoke, Action<byte[]> onKnownWrite, bool allowBaselineReset = false)
     {
         AssertCurrent(feature, address, before);
+        if (feature == AdvancedDvar.Fullbright) FullbrightRefresh.Validate(memory, address);
         CheckSession();
         beforeInvoke();
         int count;
@@ -367,6 +393,7 @@ public sealed class AdvancedTransaction
         if (count > 0) onKnownWrite(Partial(before, desired, count));
         DvarValidator.Require(count == desired.Length, "WriteProcessMemory returned a short write.");
         AssertCurrent(feature, address, desired, allowBaselineReset);
+        if (feature == AdvancedDvar.Fullbright) FullbrightRefresh.Request(memory, address);
     }
 
     private void AssertCurrent(AdvancedDvar feature, ulong address, byte[] expected, bool allowBaselineReset = false)

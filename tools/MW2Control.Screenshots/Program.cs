@@ -65,6 +65,9 @@ internal static class Program
         fov.SetCurrentValue(RangeBase.ValueProperty, 97d);
         fov.GetBindingExpression(RangeBase.ValueProperty)!.UpdateSource();
         Assert(vm.RequestedFov == 97, "FOV slider is bound to the live view model");
+        fov.SetCurrentValue(RangeBase.ValueProperty, 130d);
+        fov.GetBindingExpression(RangeBase.ValueProperty)!.UpdateSource();
+        Assert(vm.RequestedFov == 130 && fov.Maximum == 130, "Extended FOV reaches 130 in the real window");
         var fps = Named<Slider>("FpsSlider");
         fps.SetCurrentValue(RangeBase.ValueProperty, 240d);
         fps.GetBindingExpression(RangeBase.ValueProperty)!.UpdateSource();

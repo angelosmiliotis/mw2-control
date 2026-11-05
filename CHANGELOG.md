@@ -1,5 +1,13 @@
 # Version history
 
+## 1.3 - November 5, 2026
+
+- Extends the FOV slider to 130, with 110 and 120 presets.
+- Adds lightweight checks between the full session checks, so recognized game resets are caught sooner.
+- Keeps full validation before every recovery write and avoids repeated writes when values already match.
+- Notifies the renderer when Fullbright changes, including when restoring the original lighting.
+- Adds a native-process retention benchmark and a script for replacing the Desktop copy with a verified build.
+
 ## 1.2 - November 5, 2026
 
 - A new olive-green interface with military artwork and clearer controls.

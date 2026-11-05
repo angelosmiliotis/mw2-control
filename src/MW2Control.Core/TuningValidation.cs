@@ -17,8 +17,8 @@ public static class TuningValidation
     public static ValidationResult ValidateRequest(TuningRequest? request)
     {
         if (request is null) return new(false, "A tuning request is required.");
-        if (!double.IsFinite(request.Fov) || request.Fov < 65 || request.Fov > 100)
-            return new(false, "FOV must be finite and between 65 and 100 inclusive.");
+        if (!double.IsFinite(request.Fov) || request.Fov < 65 || request.Fov > 130)
+            return new(false, "FOV must be finite and between 65 and 130 inclusive.");
         if (request.MaxFps != 0 && (request.MaxFps < 30 || request.MaxFps > 500))
             return new(false, "FPS must be 0 (explicit uncapped) or between 30 and 500 inclusive.");
         return new(true, "Request is valid.");
