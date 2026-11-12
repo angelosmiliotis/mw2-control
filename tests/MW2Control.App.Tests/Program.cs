@@ -17,6 +17,7 @@ internal static class Program
             try
             {
                 await Smoke();
+                await ReleaseUpdateTests.RunAsync();
                 await Preferences();
                 await ConnectionAndRecovery();
                 await RespawnRecoverySamples();

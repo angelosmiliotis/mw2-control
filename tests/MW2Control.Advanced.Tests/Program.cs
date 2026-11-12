@@ -8,6 +8,13 @@ var failed = 0;
 var none = new AdvancedSettings(false, false, false, false, null, false);
 var all = new AdvancedSettings(true, true, true, true, 0, true);
 
+Test("selective audio preserves streamed gameplay cues and restores exact gains", AudioDemoTests.PreservesGameCues);
+Test("selective audio rejects wrong channels and rolls back partial writes", AudioDemoTests.RefusesAndRollsBack);
+Test("selective audio does not restore into replaced assets", AudioDemoTests.RefusesStaleRestore);
+Test("selective audio silences active menu music without changing clicks", AudioDemoTests.MutesOnlyTheActiveMenuMusic);
+Test("selective audio catches menu music started after Apply", AudioDemoTests.MutesMenuMusicStartingAfterApply);
+Test("selective audio keeps match mute when the lobby stream changes during verification", AudioDemoTests.KeepsMatchSettingsWhenLobbyMusicChanges);
+
 Test("confirmation and invalid-mode gates never write", () =>
 {
     var memory = FakeMemory.Create();

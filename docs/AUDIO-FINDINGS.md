@@ -1,7 +1,7 @@
 # Audio
 
-Stream mute changes the current value of `snd_enableStream` to 0 on the supported Steam build. Reset restores its captured original value if the current value can still be verified.
+Selective mute applies to known music, round announcements and match countdowns on the supported Steam x64 build. The planted bomb timer and gameplay effects keep their original volumes.
 
-This mutes streamed background audio while preserving gameplay sounds such as footsteps, player gunfire, explosions and the bomb timer. The control applies to streamed sounds as a group, so its effect depends on how each sound is stored by the game.
+Lobby music is handled separately because the game can replace its audio stream while changing screens. The app rechecks it while settings are active. Reset restores volume values that still belong to the same sound in the same game session.
 
-The app changes the current dvar value. It leaves game archives and sound assets intact. The dvar mapping and type are checked before writing. The command `snd_restart` is unnecessary for this implementation and previously caused a crash when sent through an external console.
+The game needs audio streaming enabled. If another tool disabled it and the game saved that change, set `snd_enableStream` to `1` in `players/config_mp.cfg` with MW2 closed, then relaunch.

@@ -2,7 +2,7 @@
 
 Your FOV, FPS, audio and visual settings for **Call of Duty: Modern Warfare 2 (2009)** on Steam, in one Windows app.
 
-**[Download MW2 Control](https://github.com/angelosmiliotis/mw2-control/releases/download/v1.4/MW2-Control-1.4-Standalone-x64.exe)**
+**[Download MW2 Control](https://github.com/angelosmiliotis/mw2-control/releases/latest)**
 
 One EXE for Windows x64. The .NET runtime is included. Download the Standalone EXE from **Assets**; GitHub's source-code ZIP is for developers.
 
@@ -22,7 +22,7 @@ Your choices are remembered. Apply keeps them active and reapplies recognized ga
 | --- | --- |
 | **Field of view** | Changes how much of the scene you see, from **65 to 130**. Starts at **90**. |
 | **Frame cap** | Sets your FPS limit. Starts at **333**. Use **Uncapped FPS** to remove the cap. |
-| **Mute streamed sounds** | Mutes background music and streamed ambience while keeping gameplay sounds such as footsteps, gunfire, explosions and the bomb timer. |
+| **Selective mute** | Mutes lobby and match music, round announcements and match countdowns. Footsteps, killstreaks, explosions and the planted bomb timer stay audible. |
 | **Fullbright** | Uses flat lighting to brighten the scene. |
 | **No Fog** | Turns off fog. |
 | **No Glow** | Turns off the glow effect. |
@@ -39,6 +39,8 @@ Join a lobby and click **Scan lobby**. The app shows the likely host based on tr
 Use **Block likely host** to block that address for MW2, or select a block and click **Unblock selected** to remove it. Windows asks for administrator access when needed. A block can disconnect you and affect other lobbies using the same IP. Blocks stay in place until you remove them.
 
 ## Need a hand?
+
+MW2 Control checks for a newer stable release when it opens. If one is available, click **Update available** in the title bar to open its GitHub download page. If you have version 1.4 or earlier, download the current Standalone EXE once to start receiving update notices.
 
 If something isn't working, open **Diagnostics** for the connection details and recent messages. A game update can require an app update too; MW2 Control supports the Steam x64 build of `iw4mp.exe`.
 

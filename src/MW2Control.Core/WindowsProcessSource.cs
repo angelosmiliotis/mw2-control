@@ -40,7 +40,7 @@ internal sealed class WindowsProcessSource : IProcessSource
     }
 }
 
-internal sealed class WindowsProcessMemory : IProcessMemory
+internal sealed class WindowsProcessMemory : ISelectiveAudioMemory
 {
     private readonly SafeProcessHandle readHandle;
     private readonly FileStream executable;
@@ -171,7 +171,16 @@ internal sealed class WindowsProcessMemory : IProcessMemory
         }
     }
 
-    public int WriteMemory(ulong address, byte[] data)
+    public int WriteMemory(ulong address, byte[] data) => WriteData(address, data);
+
+    public int WriteSoundVolume(SoundVolumeTarget target, uint expected, uint desired)
+    {
+        var data = new byte[4];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(data, desired);
+        return WriteData(target.Address, data, target, expected, desired);
+    }
+
+    private int WriteData(ulong address, byte[] data, SoundVolumeTarget? target = null, uint expected = 0, uint desired = 0)
     {
         lock (gate)
         {
@@ -191,13 +200,24 @@ internal sealed class WindowsProcessMemory : IProcessMemory
                 throw new InvalidOperationException("The write handle belongs to a different process lifetime.");
             // Each candidate is independent: an unavailable optional feature cannot
             // block tuning. Only exact validated names/types/domains enter this whitelist.
-            if (!DvarWritePolicy.IsAllowed(this, address, data))
-                throw new InvalidOperationException("The write does not target a validated supported dvar value.");
+            if (target is null)
+            {
+                if (!DvarWritePolicy.IsAllowed(this, address, data))
+                    throw new InvalidOperationException("The write does not target a validated supported dvar value.");
+            }
+            else
+            {
+                DvarValidator.Require(SoundAliasCatalog.Targets.Contains(target.Spec) &&
+                    SoundAliasBank.IsGain(target.Original) && (desired == 0 || desired == target.Original) &&
+                    SoundAliasBank.TryReadOwned(this, target, out var current) && current == expected,
+                    "The sound changed before its volume could be written.");
+            }
             if (!ValidateIdentity()) throw new InvalidOperationException("The target session changed before the native write.");
             // Refuse executable, guarded and copy-on-write pages even at the native boundary.
             var page = QueryRegion(address);
             if (!page.Committed || !page.Contains(address, data.Length) || page.Protection != MemoryProtection.ReadWrite)
                 throw new InvalidOperationException("The destination is not an ordinary writable data page.");
+            if (target is not null) SoundAliasBank.CheckDatabase(this);
             var success = Native.WriteProcessMemory(writeHandle, Native.Pointer(address), data, (nuint)data.Length, out var written);
             if (!success)
             {

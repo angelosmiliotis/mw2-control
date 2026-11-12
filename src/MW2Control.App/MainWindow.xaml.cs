@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -13,6 +14,8 @@ public partial class MainWindow : Window
     private readonly MainViewModel _viewModel;
     private readonly LobbyNetworkView _networkView;
     private readonly Button[] _presetButtons;
+    private readonly CancellationTokenSource _updateCheck = new();
+    private ReleaseUpdate? _availableUpdate;
     private static readonly SolidColorBrush SelectedBorder = Brush("#92AE65"), NormalBorder = Brush("#404A35"),
         SelectedText = Brush("#D0E8AD"), NormalText = Brush("#C0C6B5"),
         SelectedSurface = Brush("#2C3823"), NormalSurface = Brush("#162019");
@@ -28,19 +31,45 @@ public partial class MainWindow : Window
         _networkView = new LobbyNetworkView(offline);
         NetworkPage.Content = _networkView;
         DataContext = _viewModel;
-        if (!offline) Loaded += (_, _) => _viewModel.StartMonitoring();
+        if (!offline) Loaded += StartOnlineServices;
         SourceInitialized += (_, _) => WindowFrame.HideSystemBorder(this);
         Activated += (_, _) => WindowFrame.HideSystemBorder(this);
         Deactivated += (_, _) => WindowFrame.HideSystemBorder(this);
         _viewModel.PropertyChanged += ViewModelChanged;
         Closed += async (_, _) =>
         {
+            _updateCheck.Cancel();
+            _updateCheck.Dispose();
             _viewModel.PropertyChanged -= ViewModelChanged;
             await Task.WhenAll(_viewModel.DisposeAsync(), _networkView.DisposeAsync());
         };
         _ready = true;
         ShowPage("settings");
         RefreshPresets();
+    }
+
+    private async void StartOnlineServices(object sender, RoutedEventArgs e)
+    {
+        Loaded -= StartOnlineServices;
+        _viewModel.StartMonitoring();
+        var token = _updateCheck.Token;
+        _availableUpdate = await ReleaseUpdates.CheckAsync(typeof(MainWindow).Assembly.GetName().Version!, token);
+        if (token.IsCancellationRequested || _availableUpdate is not { } update) return;
+        UpdateButton.ToolTip = $"Download MW2 Control {update.Version} from GitHub";
+        UpdateButton.Visibility = Visibility.Visible;
+    }
+
+    private void OpenUpdate(object sender, RoutedEventArgs e)
+    {
+        if (_availableUpdate is not { } update) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo(update.Page.AbsoluteUri) { UseShellExecute = true })?.Dispose();
+        }
+        catch (Win32Exception)
+        {
+            MessageBox.Show(this, "Open this release in your browser: " + update.Page, "MW2 Control");
+        }
     }
 
     private void ViewModelChanged(object? sender, PropertyChangedEventArgs e)

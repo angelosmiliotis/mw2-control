@@ -1,5 +1,10 @@
 # Version history
 
+## 1.5 - November 12, 2026
+
+- Mutes lobby and match music, round announcements and countdowns while keeping the planted bomb timer and other gameplay effects audible.
+- Checks for a new stable version at startup and links to its GitHub release when an update is available.
+
 ## 1.4 - November 5, 2026
 
 - Shrinks the minimum window from 1100 × 730 to 760 × 480 for use alongside windowed MW2.

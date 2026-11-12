@@ -35,7 +35,7 @@ public sealed partial class MainViewModel
         public event PropertyChangedEventHandler? PropertyChanged;
     }
 
-    public AdvancedFeature Music { get; } = new("music", "Mute streamed sounds", "Mute streamed audio while keeping gameplay cues such as footsteps, gunfire, explosions, and the bomb timer audible.");
+    public AdvancedFeature Music { get; } = new("music", "Selective mute", "Mute music, round announcements and match countdowns.");
     public AdvancedFeature Fullbright { get; } = new("fullbright", "Fullbright", "Validated lighting setting, when available for this build.");
     public AdvancedFeature Fog { get; } = new("fog", "No Fog", "Request fog removal through a validated setting.");
     public AdvancedFeature Glow { get; } = new("glow", "No Glow", "Request glow removal through a validated setting.");

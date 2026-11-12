@@ -1,20 +1,30 @@
+using System.Diagnostics;
+
 namespace MW2Control.Core;
 
 /// <summary>Serialized facade. Inspect and Dispose never write; disposal does not implicitly restore.</summary>
 public sealed class ControlEngine : IDisposable
 {
     private readonly IProcessSource source;
+    private readonly bool useSelectiveAudio;
     private readonly object gate = new();
     private IProcessMemory? memory;
     private TuningTransaction? transaction;
     private AdvancedTransaction? advancedTransaction;
+    private SelectiveAudio? selectiveAudio;
+    private long lastMenuCheck;
     private ProcessIdentity? lastWriteSession;
     private ProcessIdentity? lastAdvancedWriteSession;
     private bool maintenanceFaulted;
     private bool disposed;
 
-    public ControlEngine() : this(new WindowsProcessSource()) { }
-    public ControlEngine(IProcessSource source) => this.source = source ?? throw new ArgumentNullException(nameof(source));
+    public ControlEngine() : this(new WindowsProcessSource(), useSelectiveAudio: true) { }
+    public ControlEngine(IProcessSource source) : this(source, useSelectiveAudio: false) { }
+    private ControlEngine(IProcessSource source, bool useSelectiveAudio)
+    {
+        this.source = source ?? throw new ArgumentNullException(nameof(source));
+        this.useSelectiveAudio = useSelectiveAudio;
+    }
 
     public EngineSnapshot Inspect()
     {
@@ -58,6 +68,8 @@ public sealed class ControlEngine : IDisposable
         lock (gate)
         {
             if (!privateSessionConfirmed) return new(false, "Confirm a private/offline session before advanced changes. No writes performed.", Inspect());
+            if (useSelectiveAudio && settings is { MuteStreams: true })
+                return new(false, "Use Apply settings for selective mute.", Inspect());
             var validation = AdvancedValidation.ValidateSettings(settings);
             if (!validation.Success) return new(false, validation.Message, Inspect());
             return Operate(() => advancedTransaction!.Apply(settings, privateSessionConfirmed), advanced: true);
@@ -81,6 +93,8 @@ public sealed class ControlEngine : IDisposable
             var validation = TuningValidation.ValidateRequest(tuning);
             if (validation.Success) validation = AdvancedValidation.ValidateSettings(advanced);
             if (!validation.Success) return new(false, validation.Message, Inspect());
+            var mute = useSelectiveAudio && advanced.MuteStreams;
+            if (useSelectiveAudio) advanced = advanced with { MuteStreams = false };
 
             return WithSession(() =>
             {
@@ -101,8 +115,11 @@ public sealed class ControlEngine : IDisposable
                 var advancedResult = tuningResult.Success
                     ? OperateHeld(() => advancedTransaction!.Apply(advanced, true), restoring: false, advanced: true)
                     : new TransactionResult(false, "Advanced settings were not changed.");
-                if (tuningResult.Success && advancedResult.Success)
-                    return new(true, "Applied. " + tuningResult.Message + " " + advancedResult.Message);
+                var audioResult = tuningResult.Success && advancedResult.Success && useSelectiveAudio
+                    ? selectiveAudio?.Apply(mute) ?? new TransactionResult(!mute, mute ? "Selective audio is unavailable." : "")
+                    : new TransactionResult(true, "");
+                if (tuningResult.Success && advancedResult.Success && audioResult.Success)
+                    return new(true, ("Applied. " + tuningResult.Message + " " + advancedResult.Message + " " + audioResult.Message).TrimEnd());
 
                 var advancedRollback = advancedTransaction!.RollbackTo(advancedBefore);
                 var tuningRollback = transaction!.RollbackTo(tuningBefore);
@@ -114,7 +131,10 @@ public sealed class ControlEngine : IDisposable
                     : "Rollback needs attention. " + tuningRollback.Message + " " + advancedRollback.Message;
                 var summary = advancedRollback.Success && tuningRollback.Success
                     ? "Settings were not applied. " : "Settings were only partly applied. ";
-                return new(false, summary + tuningResult.Message + " " + advancedResult.Message + " " + rollback);
+                var detail = audioResult.Success
+                    ? tuningResult.Message + " " + advancedResult.Message
+                    : audioResult.Message;
+                return new(false, summary + detail + " " + rollback);
             }, preserveMaintenance: true);
         }
     }
@@ -128,11 +148,12 @@ public sealed class ControlEngine : IDisposable
             {
                 var tuning = OperateHeld(() => transaction!.Restore(true), restoring: true, advanced: false);
                 var advanced = OperateHeld(() => advancedTransaction!.Restore(true), restoring: true, advanced: true);
-                var summary = tuning.Success && advanced.Success ? "Reset complete."
+                var audio = selectiveAudio?.Apply(false) ?? new TransactionResult(true, "");
+                var summary = tuning.Success && advanced.Success && audio.Success ? "Reset complete."
                     : tuning.Success || advanced.Success ? "Reset partially completed." : "Reset failed.";
-                return new(tuning.Success && advanced.Success,
+                return new(tuning.Success && advanced.Success && audio.Success,
                     $"{summary} Tuning ({(tuning.Success ? "OK" : "failed")}): {tuning.Message} " +
-                    $"Audio, visuals and HUD ({(advanced.Success ? "OK" : "failed")}): {advanced.Message}");
+                    $"Audio, visuals and HUD ({(advanced.Success && audio.Success ? "OK" : "failed")}): {advanced.Message} {audio.Message}".TrimEnd());
             });
         }
     }
@@ -191,6 +212,12 @@ public sealed class ControlEngine : IDisposable
                         return MaintenanceResult(false, result.Message +
                             (tuningOwned ? " Tuning may already have been reapplied; groups are not a cross-group atomic transaction." : ""));
                     }
+                }
+                if (selectiveAudio is { MenuNeedsCheck: true } &&
+                    Stopwatch.GetElapsedTime(lastMenuCheck) >= TimeSpan.FromMilliseconds(500))
+                {
+                    lastMenuCheck = Stopwatch.GetTimestamp();
+                    selectiveAudio.MaintainMenuMute();
                 }
                 return MaintenanceResult(true, "Owned targets checked/reapplied in the held session. No baseline was recaptured. Keep applied does not guarantee rendered/audio effects or persistence between ticks.");
             }
@@ -306,6 +333,8 @@ public sealed class ControlEngine : IDisposable
             memory = candidate;
             transaction = new TuningTransaction(candidate);
             advancedTransaction = new AdvancedTransaction(candidate);
+            if (useSelectiveAudio && candidate is ISelectiveAudioMemory audioMemory)
+                selectiveAudio = new SelectiveAudio(audioMemory);
         }
         var profile = TuningValidation.ValidateProfile(memory!.Identity);
         if (!profile.Success) return ForIdentity(EngineState.UnsupportedBuild, profile.Message, UnsupportedFeatures(profile.Message));
@@ -315,7 +344,10 @@ public sealed class ControlEngine : IDisposable
 
     private EngineSnapshot Snapshot() => ForIdentity(EngineState.ReadOnlyReady,
         "Supported game build detected. Optional settings are validated independently. Apply starts settings retention for this game process.",
-        transaction!.InspectFeatures().Concat(advancedTransaction!.InspectFeatures()).ToArray());
+        transaction!.InspectFeatures().Concat(advancedTransaction!.InspectFeatures().Select(feature =>
+            useSelectiveAudio && feature.Id == "music"
+                ? selectiveAudio?.Inspect() ?? new("music", "Selective mute", false, null, "Selective audio is unavailable.")
+                : feature)).ToArray());
 
     private EngineSnapshot ForIdentity(EngineState state, string detail, IReadOnlyList<FeatureReading> features)
     {
@@ -345,6 +377,8 @@ public sealed class ControlEngine : IDisposable
         memory = null;
         transaction = null;
         advancedTransaction = null;
+        selectiveAudio = null;
+        lastMenuCheck = 0;
         maintenanceFaulted = false;
         previous?.Dispose();
     }
